@@ -1,0 +1,27 @@
+{
+  "name": "tatkalflow",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "npm run build -w @tatkalflow/shared && npm run build -w @tatkalflow/api",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "db:dev": "npm run db:dev -w @tatkalflow/api",
+    "db:migrate": "npm run db:migrate -w @tatkalflow/api",
+    "db:seed": "npm run db:seed -w @tatkalflow/api",
+    "dev:api": "npm run dev -w @tatkalflow/api"
+  },
+  "allowScripts": {
+    "prisma@7.10.0": true,
+    "@prisma/engines@7.10.0": true,
+    "esbuild@0.28.2": true
+  }
+}
