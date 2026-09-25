@@ -16,7 +16,8 @@ integration: none is publicly available.
 | 1 | Architecture audit | ✅ |
 | 2 | Database & authentication | ✅ |
 | 3 | Passenger master, station master, app shell, onboarding | ✅ (station dataset source still to be decided) |
-| 4+ | Journey preferences, Tatkal engine, scheduler, notifications, … | planned |
+| 4 | Journey creation & preferences: templates, journeys, trains, classes, readiness | ✅ ([spec](docs/phase-4-journey-creation.md), [notes](docs/phase-4-implementation.md)) |
+| 5+ | Tatkal date engine, scheduler, notifications, … | planned |
 
 ## Repository layout
 
@@ -27,10 +28,10 @@ apps/api          Fastify + Prisma API
   prisma/         schema.prisma, SQL migrations, seed
   rules/          railway-rules.json: the source-controlled rules registry
   scripts/        pglite-server, new-migration, rules, import-stations
-  src/modules/    auth, otp, rules, audit, users, passengers, stations, journeys, system
+  src/modules/    auth, otp, rules, audit, users, passengers, stations, journeys, trains, system
   test/           integration tests on in-memory PGlite (+ test-only fixtures)
 apps/web          React + Vite PWA
-docs/             PGlite compatibility, station master, dependency audit
+docs/             Phase 4 spec and notes, PGlite compatibility, station master, dependency audit
 ```
 
 ## Getting started
@@ -41,6 +42,7 @@ Requires Node 22+.
 npm install
 cp .env.example apps/api/.env      # fill the three secrets: openssl rand -base64 48
 npm run build -w @tatkalflow/shared
+npm run db:generate -w @tatkalflow/api   # Prisma client (needs DATABASE_URL; the .env above provides it)
 npm run db:dev                     # terminal 1: local PGlite on 127.0.0.1:55432
 npm run db:migrate && npm run db:seed
 npm run dev:api                    # terminal 2: API on :8787
@@ -56,6 +58,10 @@ Station search stays empty until a station dataset is imported; see
 ```bash
 npm test && npm run typecheck && npm run build
 ```
+
+`prisma generate` (and therefore `npm run build`) reads `DATABASE_URL` even
+though it doesn't connect. Without `apps/api/.env`, export it first, e.g. the
+development value from `.env.example`.
 
 > **npm cache note:** on this development machine `~/.npm` contains root-owned
 > files, so plain `npm install` fails with `EACCES`. Workaround used:
@@ -104,6 +110,18 @@ React 19 + Vite + Tailwind 4 + TanStack Query + React Hook Form + Zod (the same 
   - The station combobox follows the WAI-ARIA pattern, and dialogs use native `<dialog>`.
   - Skip link, visible focus ring, and support for reduced motion.
   - Status is never shown by colour alone.
+
+## Journeys & templates (Phase 4)
+
+- **Templates** are reusable setups with no date: name, route, boarding point, quota, preferred trains, class preferences, passengers (with a berth each), RAC/waitlist and auto-upgrade preferences.
+- **Journeys** are dated instances. Creating one from a template *copies* the configuration, so editing or deleting the template never changes existing journeys. Journeys can also be created directly, edited (drafts only), duplicated and deleted.
+- **Priorities are explicit.** Trains and classes are ordered lists: position 1 is the first choice. The API offers PUT (replace/reorder), POST (append) and DELETE (remove) for passengers, trains and classes on both kinds; the UI reorders with Move up / Move down.
+- **Defaults:** class priority 2A → 3A → 3E, Tatkal quota, auto-upgrade on, RAC/waitlist "Confirmed, RAC or waitlist" (IRCTC's own unrestricted default).
+- **Rule-driven checks.** The passenger limit (per quota), passenger-name length and senior-citizen concession on Tatkal come from `RailwayRulesService`. Missing or unverified rules produce readiness warnings; nothing is invented. Senior-citizen concession on Tatkal *fails closed*: it is treated as unavailable unless a verified rule says otherwise, and the UI has no control to select it.
+- **Rule snapshots.** Each new journey stores the rule versions in force when it was created; readiness reports rules that changed since.
+- **Booking readiness** (`GET /api/journeys/:id/readiness`) is a preparation checklist: **Ready**, **Needs attention** or **Not ready**. It is never Ready while a relied-on rule is missing or unverified. It books nothing.
+- **Trains** come from a `TrainDataProvider`. Development uses `MockTrainDataProvider` (fictional "Sample" trains, numbers 90xxx). `TRAIN_DATA_PROVIDER=mock` is refused in production, where the default is `none` (train numbers are stored as entered). There is no IRCTC scraping.
+- **TatkalDateEngine** exists only as a type contract for Phase 5; no opening dates are calculated.
 
 ## Security notes
 
