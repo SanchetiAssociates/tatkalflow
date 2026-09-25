@@ -36,23 +36,33 @@ All routes need a bearer token, scope every query by the authenticated user, and
 
 Only `DRAFT` journeys can be edited (`409 JOURNEY_NOT_EDITABLE` otherwise).
 
-## Railway rules: decision needed
+## Railway rules in the registry
 
 The spec supplies three values: **4 passengers per PNR**, **16-character passenger names**, and **no senior-citizen concession on Tatkal**. They are supported as rule keys with typed values:
 
 - `tatkal.max_passengers_per_pnr` (already existed)
 - `passenger.name_max_length` (new, critical)
-- `tatkal.senior_citizen_concession_available` (new, critical)
+- `tatkal.senior_citizen_concession_available` (new, critical; `false` = not available)
 
-**The values have not been added to `apps/api/rules/railway-rules.json`.** Phase 3 established, and its tests enforce (`rules.test.ts`: "ships only values supplied by the product brief", "does not invent rules the brief didn't supply"), that the registry holds exactly the five Phase 3 brief values. Adding entries would mean changing those Phase 3 tests, which this phase was told not to do without cause. Until the entries are added, the app reports these rules as **not configured** and readiness shows warnings; the rule-driven behaviour is exercised in `journeys-rules.test.ts` by syncing test versions through the normal registry path.
+### Verified by the product owner (in `apps/api/rules/railway-rules.json`)
 
-To apply them, add these entries (as UNVERIFIED, like the Phase 3 values, or VERIFIED once checked against an official source with `sourceUrl`, `lastVerifiedAt` and `verifiedBy`), update the two Phase 3 registry tests, and run `npm run rules:sync -w @tatkalflow/api`:
+| Rule | Value | Status | Source | Verified |
+|---|---|---|---|---|
+| `tatkal.max_passengers_per_pnr` | `4` | VERIFIED | https://contents.irctc.co.in/en/TatkalBooking.html | 2026-09-25, Sancheti Associates |
+| `tatkal.senior_citizen_concession_available` | `false` | VERIFIED | https://contents.irctc.co.in/en/TatkalBooking.html | 2026-09-25, Sancheti Associates |
 
-```json
-{ "ruleKey": "tatkal.max_passengers_per_pnr", "value": 4, "source": "TatkalFlow Phase 4 specification §11 (supplied by product owner). Not yet checked against an official IRCTC / Indian Railways source.", "sourceUrl": null, "effectiveFrom": "2026-01-01T00:00:00.000Z", "effectiveTo": null, "lastVerifiedAt": null, "verifiedBy": null, "verificationStatus": "UNVERIFIED", "status": "ACTIVE", "notes": null },
-{ "ruleKey": "passenger.name_max_length", "value": 16, "source": "TatkalFlow Phase 4 specification §12 (supplied by product owner). Not yet checked against an official IRCTC / Indian Railways source.", "sourceUrl": null, "effectiveFrom": "2026-01-01T00:00:00.000Z", "effectiveTo": null, "lastVerifiedAt": null, "verifiedBy": null, "verificationStatus": "UNVERIFIED", "status": "ACTIVE", "notes": "Counted in characters after trimming." },
-{ "ruleKey": "tatkal.senior_citizen_concession_available", "value": false, "source": "TatkalFlow Phase 4 specification §13 (supplied by product owner). Not yet checked against an official IRCTC / Indian Railways source.", "sourceUrl": null, "effectiveFrom": "2026-01-01T00:00:00.000Z", "effectiveTo": null, "lastVerifiedAt": null, "verificationStatus": "UNVERIFIED", "verifiedBy": null, "status": "ACTIVE", "notes": null }
-```
+Re-verification is due after `RULE_REVERIFY_AFTER_DAYS` (default 90 days); after that the readiness check flags them again.
+
+### Not in the registry: passenger-name length (official sources conflict)
+
+`passenger.name_max_length` is intentionally **not configured** (status MISSING), so the app warns that names can't be checked instead of enforcing a limit. Two official IRCTC sources disagree:
+
+| Source | Value |
+|---|---|
+| Current IRCTC Tatkal page: https://contents.irctc.co.in/en/TatkalBooking.html | **15** characters |
+| Older IRCTC Tatkal User Guide (PDF): https://contents.irctc.co.in/en/User%20Guide%20Tatkal%20Booking.pdf | **16** characters |
+
+The registry holds one value per rule version and has no field for conflicting evidence, so the conflict is recorded here. **Proposed resolution (not applied):** add `passenger.name_max_length` with value **15** (the current page), which would change the product value from the spec's 16. It needs the product owner's decision. Until then, readiness shows "The passenger-name length limit is not configured yet" and lists the rule as "not configured".
 
 ### How the rules behave
 

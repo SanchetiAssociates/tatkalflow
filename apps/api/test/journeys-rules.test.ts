@@ -7,10 +7,11 @@ import { parseStationFile } from "../src/modules/stations/station-parsers.js";
 import { createHarness, signIn, type Harness } from "./harness.js";
 
 /**
- * Phase 4 rule-driven behaviour. The shipped registry has no passenger limit,
- * name-length or concession rule, so this file adds versions of them through
- * the normal registry sync, exactly as a verified registry change would.
- * The values below are test inputs, not claims about current railway rules.
+ * Phase 4 rule-driven behaviour. The shipped registry carries the verified
+ * Tatkal passenger limit (4) and "no senior-citizen concession on Tatkal".
+ * Rules it doesn't carry (name length, the General limit) are added here
+ * through the normal registry sync, exactly as a registry change would.
+ * Those added values are test inputs, not claims about current railway rules.
  */
 
 let h: Harness;
@@ -57,22 +58,25 @@ afterAll(async () => {
   await h?.close();
 });
 
-describe("while rules are missing", () => {
-  it("surfaces warnings instead of inventing limits", async () => {
-    const res = await journey(pax); // 5 passengers, no limit configured
+describe("with the shipped registry", () => {
+  it("uses the verified limit, and warns about the missing name-length rule instead of inventing one", async () => {
+    const res = await journey(pax.slice(0, 4));
     expect(res.statusCode).toBe(201);
     const { readiness } = res.json().journey;
-    expect(item(readiness, "passenger_count")).toMatchObject({ status: "WARN" });
-    expect(item(readiness, "passenger_count")?.detail).toMatch(/not configured/);
+    expect(item(readiness, "passenger_count")).toMatchObject({ status: "PASS", detail: "4 of at most 4." });
     expect(item(readiness, "passenger_names")).toMatchObject({ status: "WARN" });
-    expect(item(readiness, "rules_verified")?.detail).toMatch(/Tatkal passengers per booking \(not configured\)/);
+    expect(item(readiness, "passenger_names")?.detail).toMatch(/not configured/);
+    const rulesDetail = item(readiness, "rules_verified")?.detail ?? "";
+    expect(rulesDetail).toMatch(/Passenger name length \(not configured\)/);
+    expect(rulesDetail).not.toMatch(/Tatkal passengers per booking/); // verified: not a gap
     expect(readiness.overall).not.toBe("READY");
   });
 });
 
 describe("passenger limit", () => {
   beforeAll(async () => {
-    await h.c.rules.syncFromRegistry([rule("tatkal.max_passengers_per_pnr", 4, true), rule("general.max_passengers_per_pnr", 6, false)]);
+    // The Tatkal limit comes from the shipped registry; only the General limit is a test input.
+    await h.c.rules.syncFromRegistry([rule("general.max_passengers_per_pnr", 6, false)]);
   });
 
   it("enforces the verified Tatkal limit on create, add and replace", async () => {
@@ -120,18 +124,14 @@ describe("passenger-name length", () => {
 });
 
 describe("senior-citizen concession on Tatkal", () => {
-  it("is never offered: unavailable by default and the journey says so", async () => {
+  // (That an unverified "available" value still never grants it is covered by the shared unit tests.)
+  it("is never offered: the verified rule says unavailable, and the journey says so", async () => {
     const { journey: j } = (await journey([pax[0]!])).json();
     expect(item(j.readiness, "senior_concession")).toMatchObject({ status: "INFO" });
     expect(item(j.readiness, "senior_concession")?.detail).toMatch(/isn't available on Tatkal bookings\. Meera will be booked at the normal Tatkal fare/);
-    // The rule is missing, so readiness also flags it as unverified.
-    expect(item(j.readiness, "rules_verified")?.detail).toMatch(/Senior-citizen concession on Tatkal \(not configured\)/);
-    expect((await get("/api/journey-options")).json().rules.seniorConcessionOnTatkal).toMatchObject({ concession: "UNAVAILABLE", verificationStatus: "MISSING" });
-  });
-
-  it("an unverified 'available' rule still doesn't grant it (fails closed)", async () => {
-    await h.c.rules.syncFromRegistry([rule("tatkal.senior_citizen_concession_available", true, false)]);
-    expect((await get("/api/journey-options")).json().rules.seniorConcessionOnTatkal).toMatchObject({ concession: "UNAVAILABLE", value: true, isVerified: false });
+    // Verified in the registry, so it is not listed as a rule gap.
+    expect(item(j.readiness, "rules_verified")?.detail).not.toMatch(/Senior-citizen concession/);
+    expect((await get("/api/journey-options")).json().rules.seniorConcessionOnTatkal).toMatchObject({ concession: "UNAVAILABLE", value: false, verificationStatus: "VERIFIED", isVerified: true });
   });
 });
 

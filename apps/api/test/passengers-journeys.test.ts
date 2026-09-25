@@ -83,7 +83,8 @@ describe("journey drafts", () => {
     const { journey, warnings } = res.json();
     expect(journey).toMatchObject({ fromStationCode: "BCT", fromStationName: "Mumbai Central", toStationName: "New Delhi", journeyDate: "2026-10-25", state: "DRAFT", quota: "TATKAL" });
     expect(journey.passengers[0]).toMatchObject({ id: p.id, name: "Meera" });
-    expect(warnings.join(" ")).toMatch(/passenger limit .* not configured/i);
+    // The Tatkal passenger limit is now a verified registry rule, so it is no longer reported as missing.
+    expect(warnings.join(" ")).not.toMatch(/passenger limit .* not configured/i);
     expect(warnings.join(" ")).toMatch(/not been verified/i);
   });
 

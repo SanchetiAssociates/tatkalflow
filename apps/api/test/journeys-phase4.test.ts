@@ -83,10 +83,10 @@ describe("journey options and trains", () => {
     expect(o.defaults).toMatchObject({ quota: "TATKAL", considerAutoUpgradation: true, racWaitlistPreference: "ALLOW_WAITLIST" });
     expect(o.classes.find((k: { code: string }) => k.code === "3A")).toMatchObject({ name: "AC 3 Tier", tatkalCategory: "AC" });
     expect(o.classes.find((k: { code: string }) => k.code === "SL").tatkalCategory).toBe("UNKNOWN"); // non-AC list not configured
-    // The registry has no passenger limit or name-length rule: reported as MISSING, never invented.
-    expect(o.rules.passengerLimit.TATKAL).toMatchObject({ ruleKey: "tatkal.max_passengers_per_pnr", value: null, verificationStatus: "MISSING" });
+    // Verified registry rules are served with their state; the name-length rule is not in the registry (MISSING, never invented).
+    expect(o.rules.passengerLimit.TATKAL).toMatchObject({ ruleKey: "tatkal.max_passengers_per_pnr", value: 4, verificationStatus: "VERIFIED", isVerified: true });
     expect(o.rules.nameMaxLength).toMatchObject({ value: null, verificationStatus: "MISSING" });
-    expect(o.rules.seniorConcessionOnTatkal.concession).toBe("UNAVAILABLE");
+    expect(o.rules.seniorConcessionOnTatkal).toMatchObject({ concession: "UNAVAILABLE", value: false, verificationStatus: "VERIFIED" });
     expect(o.trainData).toEqual({ provider: "mock", available: true });
   });
 
@@ -224,7 +224,8 @@ describe("journeys", () => {
     ]);
     expect(journey.ruleSnapshot).toMatchObject({ version: 1, capturedAt: "2026-09-25T04:30:00.000Z" });
     expect(journey.ruleSnapshot.rules["tatkal.ac.opening_time"]).toMatchObject({ value: "10:00", verificationStatus: "UNVERIFIED", isVerified: false });
-    expect(journey.ruleSnapshot.rules["tatkal.max_passengers_per_pnr"]).toBeNull(); // recorded as missing
+    expect(journey.ruleSnapshot.rules["tatkal.max_passengers_per_pnr"]).toMatchObject({ value: 4, verificationStatus: "VERIFIED", isVerified: true });
+    expect(journey.ruleSnapshot.rules["passenger.name_max_length"]).toBeNull(); // recorded as missing
     expect(journey.readiness.overall).not.toBe("READY");
     expect(warnings.length).toBeGreaterThan(0);
   });
