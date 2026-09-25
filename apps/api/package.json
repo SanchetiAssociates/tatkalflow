@@ -13,7 +13,10 @@
     "db:migrate": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
     "db:generate": "prisma generate",
-    "db:new-migration": "tsx scripts/new-migration.ts"
+    "db:new-migration": "tsx scripts/new-migration.ts",
+    "rules:sync": "tsx scripts/rules.ts sync",
+    "rules:status": "tsx scripts/rules.ts status",
+    "stations:import": "tsx scripts/import-stations.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.2",

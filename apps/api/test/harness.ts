@@ -28,7 +28,10 @@ export interface Harness {
  * wire protocol so the app uses exactly the same driver path as production.
  * Migrations are the committed SQL files, applied in order.
  */
-export async function createHarness(overrides: Partial<Record<keyof AppConfig, string>> = {}): Promise<Harness> {
+export async function createHarness(
+  overrides: Partial<Record<keyof AppConfig, string>> = {},
+  opts: { logStream?: { write(line: string): void } } = {},
+): Promise<Harness> {
   const pglite = await PGlite.create();
   for (const dir of readdirSync(MIGRATIONS_DIR).filter((d) => /^\d+_/.test(d)).sort()) {
     await pglite.exec(readFileSync(join(MIGRATIONS_DIR, dir, "migration.sql"), "utf8"));
@@ -53,7 +56,7 @@ export async function createHarness(overrides: Partial<Record<keyof AppConfig, s
   const clock = new FakeClock();
   const otp = new MockOTPProvider();
   const c = createContainer({ config, db, clock, otpProvider: otp });
-  const app = await buildApp(c);
+  const app = await buildApp(c, { logStream: opts.logStream });
   await app.ready();
 
   return {

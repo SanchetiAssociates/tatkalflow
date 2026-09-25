@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { jwtVerify, SignJWT } from "jose";
 import type { AppConfig } from "../../config.js";
-import type { Db } from "../../db.js";
+import type { Db, Prisma } from "../../db.js";
 import type { Clock } from "../../lib/clock.js";
 import { generateOpaqueToken, sha256Hex } from "../../lib/crypto.js";
 import { Errors } from "../../lib/errors.js";
@@ -40,21 +40,31 @@ export class TokenService {
     private readonly db: Db,
     private readonly clock: Clock,
     private readonly audit: AuditService,
-    private readonly config: Pick<AppConfig, "JWT_ACCESS_SECRET" | "ACCESS_TOKEN_TTL_SECONDS" | "REFRESH_TOKEN_TTL_DAYS">,
+    private readonly config: Pick<
+      AppConfig,
+      "JWT_ACCESS_SECRET" | "ACCESS_TOKEN_TTL_SECONDS" | "REFRESH_TOKEN_TTL_DAYS" | "REFRESH_RACE_GRACE_SECONDS"
+    >,
   ) {
     this.key = new TextEncoder().encode(config.JWT_ACCESS_SECRET);
   }
 
-  async issue(userId: string, ctx: RequestContext, familyId: string = randomUUID()): Promise<IssuedTokens> {
+  async issue(
+    userId: string,
+    ctx: RequestContext,
+    familyId: string = randomUUID(),
+    tx: Prisma.TransactionClient | Db = this.db,
+  ): Promise<IssuedTokens> {
     const now = this.clock.now();
     const refreshToken = generateOpaqueToken();
     const refreshTokenExpiresAt = new Date(now.getTime() + this.config.REFRESH_TOKEN_TTL_DAYS * 86_400_000);
-    const session = await this.db.authSession.create({
+    const session = await tx.authSession.create({
       data: {
         userId,
         familyId,
         refreshTokenHash: sha256Hex(refreshToken),
         expiresAt: refreshTokenExpiresAt,
+        // Service clock, so the race grace window is measured consistently.
+        createdAt: now,
         userAgent: ctx.userAgent?.slice(0, 512) ?? null,
         ipHash: ctx.ipHash,
       },
@@ -123,6 +133,20 @@ export class TokenService {
     if (!session) throw Errors.unauthorized();
 
     if (session.revokedReason === ROTATED) {
+      if (await this.isBenignRace(session, ctx, now)) {
+        // Two tabs of the same browser raced with the same cookie. No tokens
+        // are issued for the stale token; the client retries with the cookie
+        // the winning request already set.
+        await this.audit.record({
+          action: AuditActions.REFRESH_RACE,
+          userId: session.userId,
+          entityType: "auth_session",
+          entityId: session.id,
+          ipHash: ctx.ipHash,
+          userAgent: ctx.userAgent,
+        });
+        throw Errors.refreshInProgress();
+      }
       // This token was already exchanged: someone is replaying it.
       await this.revokeFamily(session.familyId, "refresh_reuse");
       await this.audit.record({
@@ -138,14 +162,24 @@ export class TokenService {
     }
     if (session.revokedAt || session.expiresAt <= now || session.user.deletedAt) throw Errors.unauthorized();
 
-    // Claim the rotation atomically; a concurrent rotate of the same token loses.
-    const claimed = await this.db.authSession.updateMany({
-      where: { id: session.id, rotatedAt: null, revokedAt: null },
-      data: { rotatedAt: now, revokedAt: now, revokedReason: ROTATED, lastUsedAt: now },
+    // Claim the rotation and create the successor in one transaction, so a
+    // concurrent loser only ever observes "rotated + successor exists".
+    const tokens = await this.db.$transaction(async (tx) => {
+      const claimed = await tx.authSession.updateMany({
+        where: { id: session.id, rotatedAt: null, revokedAt: null },
+        data: { rotatedAt: now, revokedAt: now, revokedReason: ROTATED, lastUsedAt: now },
+      });
+      if (claimed.count !== 1) return null;
+      return this.issue(session.userId, ctx, session.familyId, tx);
     });
-    if (claimed.count !== 1) throw Errors.unauthorized();
+    if (!tokens) {
+      // Lost a concurrent rotation of the same token. Same rules as a replay:
+      // a same-device race gets 409 (no tokens); anything else is refused.
+      const latest = await this.db.authSession.findUnique({ where: { id: session.id }, select: { familyId: true, rotatedAt: true } });
+      if (latest && (await this.isBenignRace(latest, ctx, this.clock.now()))) throw Errors.refreshInProgress();
+      throw Errors.unauthorized();
+    }
 
-    const tokens = await this.issue(session.userId, ctx, session.familyId);
     await this.audit.record({
       action: AuditActions.TOKEN_REFRESHED,
       userId: session.userId,
@@ -155,6 +189,29 @@ export class TokenService {
       userAgent: ctx.userAgent,
     });
     return tokens;
+  }
+
+  /**
+   * A replay is treated as a same-browser race only if ALL hold:
+   *  - the token was rotated within REFRESH_RACE_GRACE_SECONDS,
+   *  - its successor is still live (not logged out / revoked),
+   *  - the replay comes from the same IP hash and user agent as the rotation.
+   * Anything else is handled as theft.
+   */
+  private async isBenignRace(
+    session: { familyId: string; rotatedAt: Date | null },
+    ctx: RequestContext,
+    now: Date,
+  ): Promise<boolean> {
+    const graceMs = this.config.REFRESH_RACE_GRACE_SECONDS * 1000;
+    if (!graceMs || !session.rotatedAt || now.getTime() - session.rotatedAt.getTime() > graceMs) return false;
+    const successor = await this.db.authSession.findFirst({
+      where: { familyId: session.familyId, createdAt: { gte: session.rotatedAt }, revokedAt: null },
+      orderBy: { createdAt: "desc" },
+      select: { ipHash: true, userAgent: true },
+    });
+    if (!successor) return false;
+    return successor.ipHash === ctx.ipHash && successor.userAgent === (ctx.userAgent?.slice(0, 512) ?? null);
   }
 
   /** Logout: revoke the whole family the current session belongs to. */

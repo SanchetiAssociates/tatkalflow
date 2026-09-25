@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { requestOtpSchema, verifyOtpSchema } from "@tatkalflow/shared";
 import { z } from "zod";
 import type { AppContainer } from "../../container.js";
-import { Errors } from "../../lib/errors.js";
+import { AppError, Errors } from "../../lib/errors.js";
 import {
   assertCsrf,
   authenticate,
@@ -55,6 +55,9 @@ export async function authRoutes(app: FastifyInstance, c: AppContainer) {
       setRefreshCookie(reply, issued, config.COOKIE_SECURE);
       return { accessToken: issued.accessToken, accessTokenExpiresAt: issued.accessTokenExpiresAt.toISOString() };
     } catch (err) {
+      // Clear the cookie only when the session is really gone. A 409 race
+      // must leave it alone: the winning tab has just set the new one.
+      if (err instanceof AppError && err.code === "REFRESH_IN_PROGRESS") throw err;
       clearRefreshCookie(reply, config.COOKIE_SECURE);
       throw err;
     }

@@ -26,6 +26,8 @@ export const Errors = {
   otpLocked: () => new AppError(429, "OTP_LOCKED", "Too many incorrect attempts. Request a new code."),
   otpDeliveryFailed: () =>
     new AppError(503, "OTP_DELIVERY_FAILED", "We couldn't send the code right now. Please try again shortly."),
+  refreshInProgress: () =>
+    new AppError(409, "REFRESH_IN_PROGRESS", "Your session was just refreshed in another tab. Retrying…"),
   csrf: () => new AppError(403, "CSRF_REJECTED", "Request blocked for your security. Refresh the app and try again."),
   ruleNotConfigured: (key: string) =>
     new AppError(503, "RULE_NOT_CONFIGURED", "Railway rules are being updated. Please try again shortly.", { ruleKey: key }),

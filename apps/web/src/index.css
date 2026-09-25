@@ -1,0 +1,128 @@
+@import "tailwindcss";
+
+/* Theme tokens. Light by default; dark via OS preference unless the user
+   picked a theme (data-theme on <html>). */
+:root {
+  --bg: #f6f7fb;
+  --surface: #ffffff;
+  --surface-2: #eef0f6;
+  --text: #0e1426;
+  --text-muted: #525b73;
+  --border: #dde1eb;
+  --primary: #1f3fbf;
+  --primary-fg: #ffffff;
+  --accent: #c25e00;
+  --accent-soft: #fff1e3;
+  --success: #117a43;
+  --success-soft: #e5f6ec;
+  --warning: #8a5a00;
+  --warning-soft: #fff5d6;
+  --danger: #b42318;
+  --danger-soft: #fdecea;
+  --focus: #1f3fbf;
+  --shadow: 0 1px 2px rgb(14 20 38 / 0.06), 0 4px 16px rgb(14 20 38 / 0.06);
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0b1020;
+    --surface: #131a2e;
+    --surface-2: #1b2340;
+    --text: #eef1f8;
+    --text-muted: #a3acc4;
+    --border: #28314f;
+    --primary: #8ea6ff;
+    --primary-fg: #0b1020;
+    --accent: #ffb366;
+    --accent-soft: #3a2710;
+    --success: #6fd49c;
+    --success-soft: #11321f;
+    --warning: #f5c451;
+    --warning-soft: #3a2f0d;
+    --danger: #ff8a80;
+    --danger-soft: #3d1614;
+    --focus: #8ea6ff;
+    --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 6px 20px rgb(0 0 0 / 0.35);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0b1020;
+  --surface: #131a2e;
+  --surface-2: #1b2340;
+  --text: #eef1f8;
+  --text-muted: #a3acc4;
+  --border: #28314f;
+  --primary: #8ea6ff;
+  --primary-fg: #0b1020;
+  --accent: #ffb366;
+  --accent-soft: #3a2710;
+  --success: #6fd49c;
+  --success-soft: #11321f;
+  --warning: #f5c451;
+  --warning-soft: #3a2f0d;
+  --danger: #ff8a80;
+  --danger-soft: #3d1614;
+  --focus: #8ea6ff;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 6px 20px rgb(0 0 0 / 0.35);
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-text: var(--text);
+  --color-muted: var(--text-muted);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-fg: var(--primary-fg);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --shadow-card: var(--shadow);
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", "Helvetica Neue", Arial, sans-serif;
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--text);
+  -webkit-tap-highlight-color: transparent;
+  text-rendering: optimizeLegibility;
+}
+body {
+  min-height: 100dvh;
+  overscroll-behavior-y: none;
+}
+:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+.pb-safe {
+  padding-bottom: max(env(safe-area-inset-bottom), 0.5rem);
+}
+.pt-safe {
+  padding-top: env(safe-area-inset-top);
+}
+@keyframes rise {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+.animate-rise {
+  animation: rise 220ms ease-out both;
+}

@@ -1,5 +1,8 @@
+import type { RailwayRuleInput } from "@tatkalflow/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { SEED_RULES } from "../prisma/seed-data.js";
+import { AuditService } from "../src/modules/audit/audit.service.js";
+import { loadRulesRegistry } from "../src/modules/rules/registry.js";
+import { RailwayRulesService } from "../src/modules/rules/railway-rules.service.js";
 import { createHarness, signIn, type Harness } from "./harness.js";
 
 let h: Harness;
@@ -10,80 +13,159 @@ afterAll(async () => {
   await h?.close();
 });
 
-const system = { actorType: "SYSTEM" as const };
+const registry = () => loadRulesRegistry();
+function service(enforceVerification: boolean) {
+  return new RailwayRulesService(h.db, h.clock, new AuditService(h.db), { enforceVerification, reverifyAfterDays: 90 });
+}
+function entry(key: RailwayRuleInput["ruleKey"]): RailwayRuleInput {
+  const e = registry().find((r) => r.ruleKey === key);
+  if (!e) throw new Error(`registry has no ${key}`);
+  return e;
+}
+const EVIDENCE = {
+  sourceUrl: "https://www.irctc.co.in/example-official-rule-page",
+  lastVerifiedAt: "2026-09-20T00:00:00.000Z",
+  verifiedBy: "ops@tatkalflow (test)",
+};
 
-describe("RailwayRulesService", () => {
-  it("resolves seeded rules with provenance", async () => {
-    const rule = await h.c.rules.get("tatkal.ac.opening_time");
-    expect(rule.value).toBe("10:00");
-    expect(rule.source).toMatch(/IRCTC/);
-    expect(rule.effectiveFrom.toISOString()).toBe("2026-01-01T00:00:00.000Z");
-    expect(rule.lastVerifiedAt).toBeNull(); // must be verified by an operator
-    expect(await h.c.rules.getValue("tatkal.non_ac.opening_time")).toBe("11:00");
-    expect(await h.c.rules.getValue("tatkal.advance_days")).toBe(1);
-  });
-
-  it("seeds every rule exactly once and is idempotent", async () => {
-    const { seed } = await import("../prisma/seed.js");
-    const again = await seed(h.db);
-    expect(again.rulesCreated).toBe(0);
-    for (const r of SEED_RULES) {
-      expect(await h.db.railwayRule.count({ where: { ruleKey: r.ruleKey } })).toBe(1);
+describe("rules registry (source-controlled)", () => {
+  it("ships only values supplied by the product brief, all UNVERIFIED", () => {
+    const rules = registry();
+    expect(rules.map((r) => r.ruleKey).sort()).toEqual(
+      ["tatkal.ac.opening_time", "tatkal.ac_classes", "tatkal.advance_days", "tatkal.non_ac.opening_time", "tatkal.timezone"].sort(),
+    );
+    for (const r of rules) {
+      expect(r.verificationStatus).toBe("UNVERIFIED");
+      expect(r.lastVerifiedAt).toBeNull();
+      expect(r.sourceUrl).toBeNull();
     }
   });
 
-  it("rejects values that don't match the rule's type", async () => {
+  it("is applied by the seed and resolves with provenance, flagged as unverified", async () => {
+    const rule = await h.c.rules.get("tatkal.ac.opening_time");
+    expect(rule.value).toBe("10:00");
+    expect(rule.source).toMatch(/product brief/);
+    expect(rule.verificationStatus).toBe("UNVERIFIED");
+    expect(rule.isVerified).toBe(false);
+  });
+
+  it("re-syncing is idempotent", async () => {
+    const report = await h.c.rules.syncFromRegistry(registry());
+    expect(report.created).toEqual([]);
+    expect(report.updated).toEqual([]);
+    expect(report.unchanged).toBe(registry().length);
+  });
+
+  it("does not invent rules the brief didn't supply", async () => {
+    await expect(h.c.rules.get("tatkal.max_passengers_per_pnr")).rejects.toMatchObject({ code: "RULE_NOT_CONFIGURED", statusCode: 503 });
+    await expect(h.c.rules.get("tatkal.non_ac_classes")).rejects.toMatchObject({ code: "RULE_NOT_CONFIGURED" });
+  });
+});
+
+describe("verification", () => {
+  it("rejects VERIFIED without source URL, date and verifier", async () => {
     await expect(
-      h.c.rules.create(
-        { ruleKey: "tatkal.ac.opening_time", value: "10am", source: "test source", effectiveFrom: "2030-01-01T00:00:00.000Z", effectiveTo: null, lastVerifiedAt: null, status: "DRAFT" },
-        system,
-      ),
+      h.c.rules.syncFromRegistry([{ ...entry("tatkal.timezone"), verificationStatus: "VERIFIED" }]),
+    ).rejects.toThrow(/sourceUrl|lastVerifiedAt|verifiedBy/);
+    await expect(
+      h.c.rules.syncFromRegistry([{ ...entry("tatkal.timezone"), verificationStatus: "VERIFIED", ...EVIDENCE, sourceUrl: "http://insecure.example" }]),
     ).rejects.toThrow();
   });
 
-  it("rejects overlapping ACTIVE periods", async () => {
-    await expect(
-      h.c.rules.create(
-        { ruleKey: "tatkal.ac.opening_time", value: "09:30", source: "test source", effectiveFrom: "2027-01-01T00:00:00.000Z", effectiveTo: null, lastVerifiedAt: null, status: "ACTIVE" },
-        system,
-      ),
-    ).rejects.toMatchObject({ code: "RULE_OVERLAP" });
+  it("distinguishes 'exists' from 'verified' when enforcement is on", async () => {
+    const enforced = service(true);
+    // Exists:
+    expect((await enforced.get("tatkal.advance_days")).value).toBe(1);
+    // …but may not be relied on for booking:
+    await expect(enforced.getForBooking("tatkal.advance_days")).rejects.toMatchObject({ code: "RULE_UNVERIFIED", statusCode: 503 });
+    // Without enforcement (dev) it is returned, clearly marked unverified:
+    const relaxed = await service(false).getForBooking("tatkal.advance_days");
+    expect(relaxed.isVerified).toBe(false);
   });
 
-  it("supersedes a rule from a future date without touching earlier journeys", async () => {
-    const changeAt = new Date("2027-04-01T00:00:00.000Z");
-    await h.c.rules.supersede(
-      { ruleKey: "tatkal.ac.opening_time", value: "09:30", source: "Hypothetical IRCTC circular (test)", effectiveFrom: changeAt.toISOString(), lastVerifiedAt: null },
-      system,
-    );
-    expect(await h.c.rules.getValue("tatkal.ac.opening_time", new Date("2027-03-31T23:59:59.000Z"))).toBe("10:00");
-    expect(await h.c.rules.getValue("tatkal.ac.opening_time", changeAt)).toBe("09:30");
+  it("accepts a rule once verified in the registry, and audits the change", async () => {
+    const verified = { ...entry("tatkal.advance_days"), verificationStatus: "VERIFIED" as const, ...EVIDENCE };
+    const report = await h.c.rules.syncFromRegistry([verified]);
+    expect(report.updated).toHaveLength(1);
 
-    const audit = await h.db.auditLog.findMany({ where: { action: "rules.changed", metadata: { path: ["ruleKey"], equals: "tatkal.ac.opening_time" } } });
-    expect(audit.length).toBeGreaterThanOrEqual(2);
+    const rule = await service(true).getForBooking("tatkal.advance_days");
+    expect(rule.isVerified).toBe(true);
+    expect(rule.sourceUrl).toBe(EVIDENCE.sourceUrl);
+
+    const audit = await h.db.auditLog.findFirst({ where: { action: "rules.changed", entityId: rule.id }, orderBy: { createdAt: "desc" } });
+    expect(audit?.metadata).toMatchObject({ ruleKey: "tatkal.advance_days", verificationStatus: "VERIFIED" });
   });
 
-  it("fails loudly (503) when a rule is not configured, instead of guessing", async () => {
-    await expect(h.c.rules.get("tatkal.ac.opening_time", new Date("2025-06-01T00:00:00.000Z"))).rejects.toMatchObject({
-      code: "RULE_NOT_CONFIGURED",
-      statusCode: 503,
+  it("flags verified rules that are due for re-verification", async () => {
+    h.clock.advance(120 * 86_400_000);
+    const rule = await service(true).getForBooking("tatkal.advance_days");
+    expect(rule.needsReverification).toBe(true);
+    h.clock.advance(-120 * 86_400_000);
+  });
+
+  it("reports critical gaps", async () => {
+    const gaps = await service(true).verificationGaps();
+    const byKey = Object.fromEntries(gaps.map((g) => [g.ruleKey, g.state]));
+    expect(byKey["tatkal.ac.opening_time"]).toBe("UNVERIFIED");
+    expect(byKey["tatkal.max_passengers_per_pnr"]).toBe("MISSING");
+    expect(byKey["tatkal.advance_days"]).toBeUndefined(); // verified above
+  });
+});
+
+describe("versioning", () => {
+  it("values are immutable per (ruleKey, effectiveFrom)", async () => {
+    await expect(h.c.rules.syncFromRegistry([{ ...entry("tatkal.ac.opening_time"), value: "09:30" }])).rejects.toMatchObject({
+      code: "RULE_VALUE_IMMUTABLE",
     });
   });
 
-  it("ignores DRAFT and RETIRED rules", async () => {
-    await h.c.rules.create(
-      { ruleKey: "tatkal.max_passengers_per_pnr", value: 6, source: "draft for review", effectiveFrom: "2026-02-01T00:00:00.000Z", effectiveTo: null, lastVerifiedAt: null, status: "DRAFT" },
-      system,
-    );
-    expect(await h.c.rules.getValue("tatkal.max_passengers_per_pnr")).toBe(4);
+  it("rejects a new ACTIVE version that overlaps the current one", async () => {
+    await expect(
+      h.c.rules.syncFromRegistry([{ ...entry("tatkal.ac.opening_time"), value: "09:30", effectiveFrom: "2027-04-01T00:00:00.000Z" }]),
+    ).rejects.toMatchObject({ code: "RULE_OVERLAP" });
   });
 
-  it("exposes active rules to signed-in users", async () => {
+  it("supersedes by closing the old period and adding a new version", async () => {
+    const changeAt = "2027-04-01T00:00:00.000Z";
+    const old = { ...entry("tatkal.ac.opening_time"), effectiveTo: changeAt, verificationStatus: "SUPERSEDED" as const };
+    const next = { ...entry("tatkal.ac.opening_time"), value: "09:30", source: "Hypothetical circular (test only)", effectiveFrom: changeAt };
+    const report = await h.c.rules.syncFromRegistry([old, next]);
+    expect(report.updated).toHaveLength(1);
+    expect(report.created).toHaveLength(1);
+
+    expect(await h.c.rules.getValue("tatkal.ac.opening_time", new Date("2027-03-31T23:59:59.000Z"))).toBe("10:00");
+    expect(await h.c.rules.getValue("tatkal.ac.opening_time", new Date(changeAt))).toBe("09:30");
+  });
+
+  it("marks verified rules EXPIRED once their period has ended", async () => {
+    const e = { ...entry("tatkal.timezone"), verificationStatus: "VERIFIED" as const, ...EVIDENCE, effectiveTo: "2026-10-01T00:00:00.000Z" };
+    await h.c.rules.syncFromRegistry([e]);
+    h.clock.set(new Date("2026-10-02T00:00:00.000Z"));
+    expect(await h.c.rules.expireLapsed()).toBe(1);
+    const row = await h.db.railwayRule.findFirstOrThrow({ where: { ruleKey: "tatkal.timezone" } });
+    expect(row.verificationStatus).toBe("EXPIRED");
+    await expect(service(true).getForBooking("tatkal.timezone")).rejects.toMatchObject({ code: "RULE_NOT_CONFIGURED" });
+    h.clock.set(new Date("2026-09-25T04:30:00.000Z"));
+  });
+
+  it("reports ACTIVE database rules that are missing from the registry", async () => {
+    // An empty registry manages nothing, so every ACTIVE row is reported (and none deleted).
+    const report = await h.c.rules.syncFromRegistry([]);
+    expect(report.unmanaged.some((u) => u.startsWith("tatkal.ac_classes@"))).toBe(true);
+    expect(await h.db.railwayRule.count({ where: { ruleKey: "tatkal.ac_classes" } })).toBe(1);
+  });
+});
+
+describe("API", () => {
+  it("exposes rules with verification state and gaps to signed-in users", async () => {
     const { accessToken } = await signIn(h);
     const res = await h.app.inject({ method: "GET", url: "/api/rules/active", headers: { authorization: `Bearer ${accessToken}` } });
     expect(res.statusCode).toBe(200);
-    const keys = res.json().map((r: { ruleKey: string }) => r.ruleKey);
-    expect(keys).toEqual(expect.arrayContaining(["tatkal.ac.opening_time", "tatkal.advance_days"]));
+    const body = res.json();
+    expect(body.enforcement).toBe(false); // test env
+    const ac = body.rules.find((r: { ruleKey: string }) => r.ruleKey === "tatkal.ac_classes");
+    expect(ac).toMatchObject({ verificationStatus: "UNVERIFIED", isVerified: false });
+    expect(body.gaps.length).toBeGreaterThan(0);
     expect((await h.app.inject({ method: "GET", url: "/api/rules/active" })).statusCode).toBe(401);
   });
 });

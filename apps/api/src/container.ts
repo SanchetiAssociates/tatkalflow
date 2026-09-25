@@ -7,6 +7,7 @@ import { OtpService } from "./modules/auth/otp.service.js";
 import { TokenService } from "./modules/auth/token.service.js";
 import type { OTPProvider } from "./modules/otp/otp-provider.js";
 import { RailwayRulesService } from "./modules/rules/railway-rules.service.js";
+import { StationService } from "./modules/stations/station.service.js";
 
 export interface AppContainer {
   config: AppConfig;
@@ -18,6 +19,7 @@ export interface AppContainer {
   tokens: TokenService;
   auth: AuthService;
   rules: RailwayRulesService;
+  stations: StationService;
 }
 
 export function createContainer(deps: { config: AppConfig; db: Db; clock: Clock; otpProvider: OTPProvider }): AppContainer {
@@ -26,6 +28,10 @@ export function createContainer(deps: { config: AppConfig; db: Db; clock: Clock;
   const otp = new OtpService(db, otpProvider, clock, audit, config);
   const tokens = new TokenService(db, clock, audit, config);
   const auth = new AuthService(db, clock, otp, tokens, audit);
-  const rules = new RailwayRulesService(db, clock, audit);
-  return { config, db, clock, otpProvider, audit, otp, tokens, auth, rules };
+  const rules = new RailwayRulesService(db, clock, audit, {
+    enforceVerification: config.rulesEnforceVerification,
+    reverifyAfterDays: config.RULE_REVERIFY_AFTER_DAYS,
+  });
+  const stations = new StationService(db, clock, audit);
+  return { config, db, clock, otpProvider, audit, otp, tokens, auth, rules, stations };
 }

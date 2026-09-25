@@ -16,6 +16,12 @@ const envSchema = z
     JWT_ACCESS_SECRET: secret("JWT_ACCESS_SECRET"),
     ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().min(60).max(3600).default(900),
     REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().min(1).max(90).default(30),
+    /**
+     * A just-rotated refresh token presented again within this window, from
+     * the same device fingerprint that rotated it, gets 409 (retry) instead of
+     * triggering family revocation. It never yields tokens. Max 30 s.
+     */
+    REFRESH_RACE_GRACE_SECONDS: z.coerce.number().int().min(0).max(30).default(10),
 
     OTP_HASH_PEPPER: secret("OTP_HASH_PEPPER"),
     IP_HASH_PEPPER: secret("IP_HASH_PEPPER"),
@@ -46,9 +52,23 @@ const envSchema = z
       .enum(["true", "false"])
       .default("false")
       .transform((v) => v === "true"),
+
+    /**
+     * Refuse to use critical railway rules that are not VERIFIED. Defaults to
+     * on in production (where it cannot be turned off) and off elsewhere, so
+     * development works with the UNVERIFIED seed rules.
+     */
+    RULES_ENFORCE_VERIFICATION: z.enum(["true", "false"]).optional(),
+    RULE_REVERIFY_AFTER_DAYS: z.coerce.number().int().min(1).max(730).default(90),
+
+    /** HTTP rate-limit store. V1 supports single-instance "memory" only. */
+    RATE_LIMIT_STORE: z.enum(["memory"]).default("memory"),
   })
   .superRefine((env, ctx) => {
     if (env.NODE_ENV !== "production") return;
+    if (env.RULES_ENFORCE_VERIFICATION === "false") {
+      ctx.addIssue({ code: "custom", path: ["RULES_ENFORCE_VERIFICATION"], message: "Rule verification cannot be disabled in production" });
+    }
     if (env.OTP_PROVIDER === "mock") {
       ctx.addIssue({ code: "custom", path: ["OTP_PROVIDER"], message: "The mock OTP provider cannot run in production" });
     }
@@ -64,7 +84,7 @@ const envSchema = z
     }
   });
 
-export type AppConfig = z.infer<typeof envSchema>;
+export type AppConfig = z.infer<typeof envSchema> & { rulesEnforceVerification: boolean };
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const parsed = envSchema.safeParse(env);
@@ -73,5 +93,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     const problems = parsed.error.issues.map((i) => `  - ${i.path.join(".") || "(env)"}: ${i.message}`).join("\n");
     throw new Error(`Invalid configuration:\n${problems}`);
   }
-  return parsed.data;
+  const data = parsed.data;
+  return {
+    ...data,
+    rulesEnforceVerification:
+      data.RULES_ENFORCE_VERIFICATION === undefined ? data.NODE_ENV === "production" : data.RULES_ENFORCE_VERIFICATION === "true",
+  };
 }

@@ -239,7 +239,8 @@ describe("sessions", () => {
     const at2 = r2.json().accessToken;
     expect(rt2).not.toBe(rt1);
 
-    // Attacker replays the old token → everything in the family dies.
+    // Attacker replays the old token after the tab-race grace window → everything in the family dies.
+    h.clock.advance(11_000);
     const replay = await h.app.inject({ method: "POST", url: "/api/auth/refresh", cookies: { tf_rt: rt1 }, headers: CSRF });
     expect(replay.statusCode).toBe(401);
     expect((await h.app.inject({ method: "POST", url: "/api/auth/refresh", cookies: { tf_rt: rt2 }, headers: CSRF })).statusCode).toBe(401);

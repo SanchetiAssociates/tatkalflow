@@ -24,6 +24,13 @@ describe("config", () => {
     );
   });
 
+  it("refuses to disable rule verification in production, and enforces it by default there", () => {
+    const prod = { ...base, NODE_ENV: "production", OTP_PROVIDER: "msg91" };
+    expect(() => loadConfig({ ...prod, RULES_ENFORCE_VERIFICATION: "false" })).toThrow(/cannot be disabled/);
+    expect(loadConfig(prod).rulesEnforceVerification).toBe(true);
+    expect(loadConfig({ ...base, NODE_ENV: "development" }).rulesEnforceVerification).toBe(false);
+  });
+
   it("refuses short or reused secrets", () => {
     expect(() => loadConfig({ ...base, JWT_ACCESS_SECRET: "short" })).toThrow(/JWT_ACCESS_SECRET/);
     expect(() =>

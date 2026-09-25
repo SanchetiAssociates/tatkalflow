@@ -1,0 +1,70 @@
+{
+  "$comment": "Source of truth for railway/Tatkal rules. Changes go through code review. Values are immutable per (ruleKey, effectiveFrom): to change a value, close the old entry's effectiveTo and add a new entry. Mark an entry VERIFIED only after checking it against an authoritative, current official source, and fill sourceUrl, lastVerifiedAt and verifiedBy. Never infer regulatory values.",
+  "rules": [
+    {
+      "ruleKey": "tatkal.ac.opening_time",
+      "value": "10:00",
+      "source": "TatkalFlow product brief §12 (supplied by product owner). Not yet checked against an official IRCTC / Indian Railways source.",
+      "sourceUrl": null,
+      "effectiveFrom": "2026-01-01T00:00:00.000Z",
+      "effectiveTo": null,
+      "lastVerifiedAt": null,
+      "verifiedBy": null,
+      "verificationStatus": "UNVERIFIED",
+      "status": "ACTIVE",
+      "notes": "IST time on the Tatkal opening day for AC classes."
+    },
+    {
+      "ruleKey": "tatkal.non_ac.opening_time",
+      "value": "11:00",
+      "source": "TatkalFlow product brief §12 (supplied by product owner). Not yet checked against an official IRCTC / Indian Railways source.",
+      "sourceUrl": null,
+      "effectiveFrom": "2026-01-01T00:00:00.000Z",
+      "effectiveTo": null,
+      "lastVerifiedAt": null,
+      "verifiedBy": null,
+      "verificationStatus": "UNVERIFIED",
+      "status": "ACTIVE",
+      "notes": "IST time on the Tatkal opening day for non-AC classes."
+    },
+    {
+      "ruleKey": "tatkal.advance_days",
+      "value": 1,
+      "source": "TatkalFlow product brief §12 (supplied by product owner). Not yet checked against an official IRCTC / Indian Railways source.",
+      "sourceUrl": null,
+      "effectiveFrom": "2026-01-01T00:00:00.000Z",
+      "effectiveTo": null,
+      "lastVerifiedAt": null,
+      "verifiedBy": null,
+      "verificationStatus": "UNVERIFIED",
+      "status": "ACTIVE",
+      "notes": "Opening day = journey date minus N days. Whether the date is taken at the train's originating station must be confirmed during verification."
+    },
+    {
+      "ruleKey": "tatkal.timezone",
+      "value": "Asia/Kolkata",
+      "source": "TatkalFlow product brief §12 (supplied by product owner). Not yet checked against an official IRCTC / Indian Railways source.",
+      "sourceUrl": null,
+      "effectiveFrom": "2026-01-01T00:00:00.000Z",
+      "effectiveTo": null,
+      "lastVerifiedAt": null,
+      "verifiedBy": null,
+      "verificationStatus": "UNVERIFIED",
+      "status": "ACTIVE",
+      "notes": null
+    },
+    {
+      "ruleKey": "tatkal.ac_classes",
+      "value": ["2A", "3A", "3E"],
+      "source": "TatkalFlow product brief §9 (classes named by product owner). Not an exhaustive or verified list.",
+      "sourceUrl": null,
+      "effectiveFrom": "2026-01-01T00:00:00.000Z",
+      "effectiveTo": null,
+      "lastVerifiedAt": null,
+      "verifiedBy": null,
+      "verificationStatus": "UNVERIFIED",
+      "status": "ACTIVE",
+      "notes": "Only the classes named in the brief. Other classes (and the non-AC list) must be added from a verified source; until then the app reports them as unclassified instead of guessing an opening time."
+    }
+  ]
+}

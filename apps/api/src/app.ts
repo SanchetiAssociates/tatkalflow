@@ -6,17 +6,26 @@ import rateLimit from "@fastify/rate-limit";
 import { randomUUID } from "node:crypto";
 import { ZodError } from "zod";
 import type { AppContainer } from "./container.js";
+import { rateLimitOptions } from "./http/rate-limit.js";
 import { CSRF_HEADER } from "./http/request-context.js";
 import { AppError } from "./lib/errors.js";
 import { loggerOptions } from "./logging.js";
 import { authRoutes } from "./modules/auth/auth.routes.js";
+import { journeyRoutes } from "./modules/journeys/journeys.routes.js";
+import { passengerRoutes } from "./modules/passengers/passengers.routes.js";
+import { stationRoutes } from "./modules/stations/stations.routes.js";
 import { systemRoutes } from "./modules/system/system.routes.js";
 import { meRoutes } from "./modules/users/me.routes.js";
 
-export async function buildApp(c: AppContainer): Promise<FastifyInstance> {
+export interface BuildAppOptions {
+  /** Tests only: capture real log output to assert nothing sensitive is logged. */
+  logStream?: { write(line: string): void };
+}
+
+export async function buildApp(c: AppContainer, opts: BuildAppOptions = {}): Promise<FastifyInstance> {
   const { config } = c;
   const app = Fastify({
-    logger: loggerOptions(config),
+    logger: opts.logStream ? { ...loggerOptions({ ...config, NODE_ENV: "development", LOG_LEVEL: "trace" }), stream: opts.logStream } : loggerOptions(config),
     trustProxy: config.TRUST_PROXY,
     genReqId: () => randomUUID(),
     bodyLimit: 64 * 1024,
@@ -46,13 +55,7 @@ export async function buildApp(c: AppContainer): Promise<FastifyInstance> {
     maxAge: 600,
   });
   await app.register(cookie);
-  await app.register(rateLimit, {
-    global: true,
-    max: 300,
-    timeWindow: "1 minute",
-    // NOTE: in-memory store. Multi-instance deployments need a shared store
-    // (see README "Unresolved"); OTP limits are already DB-backed.
-  });
+  await app.register(rateLimit, rateLimitOptions(config));
 
   app.addHook("onSend", async (_request, reply) => {
     reply.header("cache-control", "no-store");
@@ -97,6 +100,9 @@ export async function buildApp(c: AppContainer): Promise<FastifyInstance> {
   await authRoutes(app, c);
   await meRoutes(app, c);
   await systemRoutes(app, c);
+  await passengerRoutes(app, c);
+  await stationRoutes(app, c);
+  await journeyRoutes(app, c);
 
   return app;
 }

@@ -121,10 +121,25 @@ enum NotificationStatus {
   SKIPPED
 }
 
+/// Lifecycle: whether a rule version participates in resolution at all.
 enum RuleStatus {
   DRAFT
   ACTIVE
   RETIRED
+}
+
+/// Evidence: whether the value has been checked against an official source.
+/// "Rule exists" (ACTIVE) and "rule is verified" (VERIFIED) are separate facts.
+enum RuleVerificationStatus {
+  UNVERIFIED
+  VERIFIED
+  EXPIRED
+  SUPERSEDED
+}
+
+enum StationDatasetStatus {
+  ACTIVE
+  ARCHIVED
 }
 
 enum AuditActorType {
@@ -165,6 +180,7 @@ model User {
   pnrRecords    PnrRecord[]
   notifications Notification[]
   auditLogs     AuditLog[]
+  stations      UserStation[]
 
   @@map("users")
 }
@@ -246,9 +262,14 @@ model Passenger {
   gender               Gender
   berthPreference      BerthPreference @default(NO_PREFERENCE) @map("berth_preference")
   foodPreference       FoodPreference  @default(NO_PREFERENCE) @map("food_preference")
+  /// User's wish to claim senior-citizen benefits *if* current rules and the
+  /// quota allow it. Eligibility is decided by the rules service, not stored.
   seniorCitizenOptIn   Boolean         @default(false) @map("senior_citizen_opt_in")
+  /// For children: whether to book a full berth (where the railway offers the choice).
+  childBerthOptIn      Boolean         @default(true) @map("child_berth_opt_in")
   concessionCode       String?         @map("concession_code") @db.VarChar(32)
   nationality          String          @default("IN") @db.VarChar(2)
+  lastUsedAt           DateTime?       @map("last_used_at") @db.Timestamptz(3)
   createdAt            DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt            DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
   deletedAt            DateTime?       @map("deleted_at") @db.Timestamptz(3)
@@ -261,20 +282,63 @@ model Passenger {
 }
 
 model Station {
-  id            String   @id @default(uuid()) @db.Uuid
-  code          String   @unique @db.VarChar(8)
-  name          String   @db.VarChar(120)
-  /// Lower-cased, accent-stripped name + code for portable prefix search.
-  searchText    String   @map("search_text") @db.VarChar(200)
-  state         String?  @db.VarChar(64)
-  zone          String?  @db.VarChar(16)
-  isActive      Boolean  @default(true) @map("is_active")
-  datasetVersion String  @map("dataset_version") @db.VarChar(32)
-  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id             String   @id @default(uuid()) @db.Uuid
+  /// Official station code, upper-case (e.g. "BCT", "NDLS").
+  code           String   @unique @db.VarChar(8)
+  name           String   @db.VarChar(120)
+  /// Normalised "code name aliases" (lower-case, ASCII) for portable search.
+  searchText     String   @map("search_text") @db.VarChar(400)
+  /// Alternative/older names, e.g. ["Bombay Central"].
+  aliases        Json     @default("[]")
+  state          String?  @db.VarChar(64)
+  zone           String?  @db.VarChar(16)
+  /// Stations removed from a newer dataset are deactivated, never deleted,
+  /// so saved journeys and favourites keep resolving.
+  isActive       Boolean  @default(true) @map("is_active")
+  datasetVersion String   @map("dataset_version") @db.VarChar(32)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@index([searchText])
+  @@index([isActive])
   @@map("stations")
+}
+
+/// Provenance for each imported station dataset.
+model StationDataset {
+  id          String               @id @default(uuid()) @db.Uuid
+  version     String               @unique @db.VarChar(32)
+  source      String               @db.VarChar(500)
+  sourceUrl   String?              @map("source_url") @db.VarChar(1000)
+  license     String?              @db.VarChar(200)
+  recordCount Int                  @map("record_count")
+  /// SHA-256 of the normalised records; re-importing identical data is a no-op.
+  checksum    String               @db.VarChar(64)
+  status      StationDatasetStatus @default(ACTIVE)
+  notes       String?              @db.VarChar(2000)
+  importedAt  DateTime             @map("imported_at") @db.Timestamptz(3)
+  createdAt   DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("station_datasets")
+}
+
+/// Per-user favourite and recently used stations.
+model UserStation {
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @map("user_id") @db.Uuid
+  stationCode String    @map("station_code") @db.VarChar(8)
+  isFavourite Boolean   @default(false) @map("is_favourite")
+  useCount    Int       @default(0) @map("use_count")
+  lastUsedAt  DateTime? @map("last_used_at") @db.Timestamptz(3)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, stationCode])
+  @@index([userId, lastUsedAt])
+  @@map("user_stations")
 }
 
 model Train {
@@ -526,14 +590,18 @@ model RailwayRule {
   ruleKey        String     @map("rule_key") @db.VarChar(64)
   value          Json
   source         String     @db.VarChar(500)
+  sourceUrl      String?    @map("source_url") @db.VarChar(1000)
   effectiveFrom  DateTime   @map("effective_from") @db.Timestamptz(3)
   effectiveTo    DateTime?  @map("effective_to") @db.Timestamptz(3)
   lastVerifiedAt DateTime?  @map("last_verified_at") @db.Timestamptz(3)
+  verifiedBy     String?    @map("verified_by") @db.VarChar(120)
+  verificationStatus RuleVerificationStatus @default(UNVERIFIED) @map("verification_status")
   status         RuleStatus @default(DRAFT)
   notes          String?    @db.VarChar(2000)
   createdAt      DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt      DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
 
+  @@unique([ruleKey, effectiveFrom])
   @@index([ruleKey, status, effectiveFrom])
   @@map("railway_rules")
 }

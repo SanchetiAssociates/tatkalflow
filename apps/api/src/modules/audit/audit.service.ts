@@ -11,12 +11,19 @@ export const AuditActions = {
   LOGIN_SUCCEEDED: "auth.login_succeeded",
   TOKEN_REFRESHED: "auth.token_refreshed",
   REFRESH_REUSE_DETECTED: "auth.refresh_reuse_detected",
+  REFRESH_RACE: "auth.refresh_race",
   LOGOUT: "auth.logout",
   LOGOUT_ALL: "auth.logout_all",
   PROFILE_UPDATED: "user.profile_updated",
   IRCTC_ACCOUNT_LINKED: "irctc.account_linked",
   IRCTC_ACCOUNT_REMOVED: "irctc.account_removed",
   RULE_CHANGED: "rules.changed",
+  PASSENGER_CREATED: "passenger.created",
+  PASSENGER_UPDATED: "passenger.updated",
+  PASSENGER_DELETED: "passenger.deleted",
+  JOURNEY_CREATED: "journey.created",
+  JOURNEY_DELETED: "journey.deleted",
+  STATION_DATASET_IMPORTED: "stations.dataset_imported",
 } as const;
 export type AuditAction = (typeof AuditActions)[keyof typeof AuditActions];
 

@@ -24,13 +24,21 @@ export async function systemRoutes(app: FastifyInstance, c: AppContainer) {
   /** Railway rules currently in force, with provenance, for display in the app. */
   app.get("/api/rules/active", { preHandler: authenticate(c.tokens) }, async () => {
     const snapshot = await c.rules.snapshot();
-    return Object.values(snapshot).map((r) => ({
-      ruleKey: r.ruleKey,
-      value: r.value,
-      source: r.source,
-      effectiveFrom: r.effectiveFrom.toISOString(),
-      effectiveTo: r.effectiveTo?.toISOString() ?? null,
-      lastVerifiedAt: r.lastVerifiedAt?.toISOString() ?? null,
-    }));
+    return {
+      enforcement: c.config.rulesEnforceVerification,
+      gaps: await c.rules.verificationGaps(),
+      rules: Object.values(snapshot).map((r) => ({
+        ruleKey: r.ruleKey,
+        value: r.value,
+        source: r.source,
+        sourceUrl: r.sourceUrl,
+        effectiveFrom: r.effectiveFrom.toISOString(),
+        effectiveTo: r.effectiveTo?.toISOString() ?? null,
+        lastVerifiedAt: r.lastVerifiedAt?.toISOString() ?? null,
+        verificationStatus: r.verificationStatus,
+        isVerified: r.isVerified,
+        needsReverification: r.needsReverification,
+      })),
+    };
   });
 }
