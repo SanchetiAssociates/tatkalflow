@@ -23,6 +23,11 @@ export const AuditActions = {
   PASSENGER_DELETED: "passenger.deleted",
   JOURNEY_CREATED: "journey.created",
   JOURNEY_DELETED: "journey.deleted",
+  JOURNEY_UPDATED: "journey.updated",
+  JOURNEY_DUPLICATED: "journey.duplicated",
+  TEMPLATE_CREATED: "journey_template.created",
+  TEMPLATE_UPDATED: "journey_template.updated",
+  TEMPLATE_DELETED: "journey_template.deleted",
   STATION_DATASET_IMPORTED: "stations.dataset_imported",
 } as const;
 export type AuditAction = (typeof AuditActions)[keyof typeof AuditActions];

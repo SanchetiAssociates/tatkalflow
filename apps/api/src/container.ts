@@ -7,7 +7,9 @@ import { OtpService } from "./modules/auth/otp.service.js";
 import { TokenService } from "./modules/auth/token.service.js";
 import type { OTPProvider } from "./modules/otp/otp-provider.js";
 import { RailwayRulesService } from "./modules/rules/railway-rules.service.js";
+import { JourneyService } from "./modules/journeys/journey.service.js";
 import { StationService } from "./modules/stations/station.service.js";
+import { createTrainDataProvider, type TrainDataProvider } from "./modules/trains/train-provider.js";
 
 export interface AppContainer {
   config: AppConfig;
@@ -20,9 +22,10 @@ export interface AppContainer {
   auth: AuthService;
   rules: RailwayRulesService;
   stations: StationService;
+  journeys: JourneyService;
 }
 
-export function createContainer(deps: { config: AppConfig; db: Db; clock: Clock; otpProvider: OTPProvider }): AppContainer {
+export function createContainer(deps: { config: AppConfig; db: Db; clock: Clock; otpProvider: OTPProvider; trainProvider?: TrainDataProvider }): AppContainer {
   const { config, db, clock, otpProvider } = deps;
   const audit = new AuditService(db);
   const otp = new OtpService(db, otpProvider, clock, audit, config);
@@ -33,5 +36,6 @@ export function createContainer(deps: { config: AppConfig; db: Db; clock: Clock;
     reverifyAfterDays: config.RULE_REVERIFY_AFTER_DAYS,
   });
   const stations = new StationService(db, clock, audit);
-  return { config, db, clock, otpProvider, audit, otp, tokens, auth, rules, stations };
+  const journeys = new JourneyService(db, clock, rules, stations, deps.trainProvider ?? createTrainDataProvider(config.trainDataProvider));
+  return { config, db, clock, otpProvider, audit, otp, tokens, auth, rules, stations, journeys };
 }

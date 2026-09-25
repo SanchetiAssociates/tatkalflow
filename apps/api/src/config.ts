@@ -63,6 +63,13 @@ const envSchema = z
 
     /** HTTP rate-limit store. V1 supports single-instance "memory" only. */
     RATE_LIMIT_STORE: z.enum(["memory"]).default("memory"),
+
+    /**
+     * Train data for preferred-train search. "mock" is sample data for
+     * development and tests (refused in production); "none" disables train
+     * search. Default: "none" in production, "mock" elsewhere.
+     */
+    TRAIN_DATA_PROVIDER: z.enum(["mock", "none"]).optional(),
   })
   .superRefine((env, ctx) => {
     if (env.NODE_ENV !== "production") return;
@@ -71,6 +78,9 @@ const envSchema = z
     }
     if (env.OTP_PROVIDER === "mock") {
       ctx.addIssue({ code: "custom", path: ["OTP_PROVIDER"], message: "The mock OTP provider cannot run in production" });
+    }
+    if (env.TRAIN_DATA_PROVIDER === "mock") {
+      ctx.addIssue({ code: "custom", path: ["TRAIN_DATA_PROVIDER"], message: "The mock train data provider cannot run in production" });
     }
     if (env.MOCK_OTP_FIXED_CODE) {
       ctx.addIssue({ code: "custom", path: ["MOCK_OTP_FIXED_CODE"], message: "Must not be set in production" });
@@ -84,7 +94,7 @@ const envSchema = z
     }
   });
 
-export type AppConfig = z.infer<typeof envSchema> & { rulesEnforceVerification: boolean };
+export type AppConfig = z.infer<typeof envSchema> & { rulesEnforceVerification: boolean; trainDataProvider: "mock" | "none" };
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const parsed = envSchema.safeParse(env);
@@ -98,5 +108,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     ...data,
     rulesEnforceVerification:
       data.RULES_ENFORCE_VERIFICATION === undefined ? data.NODE_ENV === "production" : data.RULES_ENFORCE_VERIFICATION === "true",
+    trainDataProvider: data.TRAIN_DATA_PROVIDER ?? (data.NODE_ENV === "production" ? "none" : "mock"),
   };
 }
