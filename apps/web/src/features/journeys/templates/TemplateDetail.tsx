@@ -7,8 +7,13 @@ import { useDeleteTemplate, useJourneyFromTemplate, useJourneyTemplate } from ".
 import { DateDialog } from "../DateDialog";
 import { JourneySummary } from "../JourneySummary";
 
-export default function TemplateDetail() {
+/** Keyed by ID so page state never carries over between templates. */
+export default function TemplateDetailRoute() {
   const { id = "" } = useParams();
+  return <TemplateDetail key={id} id={id} />;
+}
+
+function TemplateDetail({ id }: { id: string }) {
   const navigate = useNavigate();
   const location = useLocation() as { state?: { saved?: boolean } };
   const template = useJourneyTemplate(id);

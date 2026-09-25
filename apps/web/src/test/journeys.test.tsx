@@ -347,6 +347,8 @@ describe("duplicate and delete", () => {
     await userEvent.click(within(date.closest("dialog")!).getByRole("button", { name: "Duplicate", hidden: true }));
     await waitFor(() => expect(writes()[0]).toEqual(["/api/journeys/j1/duplicate", { method: "POST", body: { journeyDate: "2027-02-01" } }]));
     expect(await screen.findByRole("heading", { name: "Copy of Diwali trip" })).toBeInTheDocument();
+    // Regression: the dialog must not stay open on the copy's page.
+    expect(document.querySelector("#dialog-journey-date")).toBeNull();
   });
 
   it("deletes after confirmation and returns to Trips", async () => {

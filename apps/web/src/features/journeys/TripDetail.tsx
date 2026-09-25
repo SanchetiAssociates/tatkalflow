@@ -10,8 +10,13 @@ import { draftFromConfig, toTemplateInput } from "./editor/draft";
 import { JourneySummary } from "./JourneySummary";
 import { ReadinessPanel } from "./ReadinessPanel";
 
-export default function TripDetail() {
+/** Keyed by ID: moving to another journey (e.g. a new copy) starts with fresh page state. */
+export default function TripDetailRoute() {
   const { id = "" } = useParams();
+  return <TripDetail key={id} id={id} />;
+}
+
+function TripDetail({ id }: { id: string }) {
   const navigate = useNavigate();
   const location = useLocation() as { state?: { saved?: boolean; warnings?: string[] } };
   const journey = useJourney(id);
