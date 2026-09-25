@@ -65,6 +65,32 @@
       "verificationStatus": "UNVERIFIED",
       "status": "ACTIVE",
       "notes": "Only the classes named in the brief. Other classes (and the non-AC list) must be added from a verified source; until then the app reports them as unclassified instead of guessing an opening time."
+    },
+    {
+      "ruleKey": "tatkal.max_passengers_per_pnr",
+      "value": 4,
+      "source": "IRCTC Tatkal booking guidance (official IRCTC page), verified by the product owner.",
+      "sourceUrl": "https://contents.irctc.co.in/en/TatkalBooking.html",
+      "effectiveFrom": "2026-01-01T00:00:00.000Z",
+      "effectiveTo": null,
+      "lastVerifiedAt": "2026-09-25T00:00:00.000Z",
+      "verifiedBy": "Sancheti Associates",
+      "verificationStatus": "VERIFIED",
+      "status": "ACTIVE",
+      "notes": "Maximum passengers per PNR on Tatkal bookings."
+    },
+    {
+      "ruleKey": "tatkal.senior_citizen_concession_available",
+      "value": false,
+      "source": "IRCTC Tatkal booking guidance (official IRCTC page), verified by the product owner.",
+      "sourceUrl": "https://contents.irctc.co.in/en/TatkalBooking.html",
+      "effectiveFrom": "2026-01-01T00:00:00.000Z",
+      "effectiveTo": null,
+      "lastVerifiedAt": "2026-09-25T00:00:00.000Z",
+      "verifiedBy": "Sancheti Associates",
+      "verificationStatus": "VERIFIED",
+      "status": "ACTIVE",
+      "notes": "Senior-citizen concession is not available on Tatkal bookings."
     }
   ]
 }

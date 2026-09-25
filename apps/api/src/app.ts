@@ -12,9 +12,11 @@ import { AppError } from "./lib/errors.js";
 import { loggerOptions } from "./logging.js";
 import { authRoutes } from "./modules/auth/auth.routes.js";
 import { journeyRoutes } from "./modules/journeys/journeys.routes.js";
+import { journeyTemplateRoutes } from "./modules/journeys/templates.routes.js";
 import { passengerRoutes } from "./modules/passengers/passengers.routes.js";
 import { stationRoutes } from "./modules/stations/stations.routes.js";
 import { systemRoutes } from "./modules/system/system.routes.js";
+import { trainRoutes } from "./modules/trains/trains.routes.js";
 import { meRoutes } from "./modules/users/me.routes.js";
 
 export interface BuildAppOptions {
@@ -103,6 +105,8 @@ export async function buildApp(c: AppContainer, opts: BuildAppOptions = {}): Pro
   await passengerRoutes(app, c);
   await stationRoutes(app, c);
   await journeyRoutes(app, c);
+  await journeyTemplateRoutes(app, c);
+  await trainRoutes(app, c);
 
   return app;
 }

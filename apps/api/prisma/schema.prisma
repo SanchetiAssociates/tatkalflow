@@ -60,6 +60,13 @@ enum Quota {
   GENERAL
 }
 
+/// Which booking outcomes the user accepts. A preference only.
+enum RacWaitlistPreference {
+  CONFIRMED_ONLY
+  ALLOW_RAC
+  ALLOW_WAITLIST
+}
+
 /// Booking state machine (brief §38). Transitions are enforced in code.
 enum JourneyState {
   DRAFT
@@ -176,6 +183,7 @@ model User {
   irctcAccount  IrctcAccount?
   passengers    Passenger[]
   journeys      Journey[]
+  journeyTemplates JourneyTemplate[]
   bookings      Booking[]
   pnrRecords    PnrRecord[]
   notifications Notification[]
@@ -274,8 +282,9 @@ model Passenger {
   updatedAt            DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
   deletedAt            DateTime?       @map("deleted_at") @db.Timestamptz(3)
 
-  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  journeyPassengers JourneyPassenger[]
+  user                      User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  journeyPassengers         JourneyPassenger[]
+  journeyTemplatePassengers JourneyTemplatePassenger[]
 
   @@index([userId, deletedAt])
   @@map("passengers")
@@ -359,11 +368,20 @@ model Train {
 
 // ───────────────────────── Journeys ─────────────────────────
 
+/// A concrete planned journey (an instance). When created from a template,
+/// the template's configuration is copied, so later template edits never
+/// change it.
 model Journey {
   id                   String       @id @default(uuid()) @db.Uuid
   userId               String       @map("user_id") @db.Uuid
+  /// Template this journey was created from, if any (provenance only).
+  templateId           String?      @map("template_id") @db.Uuid
+  /// Null for Phase 3 journeys; the API shows "From → To" instead.
+  name                 String?      @db.VarChar(60)
   fromStationCode      String       @map("from_station_code") @db.VarChar(8)
   toStationCode        String       @map("to_station_code") @db.VarChar(8)
+  /// Where the passengers board, when not at the origin.
+  boardingStationCode  String?      @map("boarding_station_code") @db.VarChar(8)
   /// Calendar date of travel in India (no time component).
   journeyDate          DateTime     @map("journey_date") @db.Date
   quota                Quota        @default(TATKAL)
@@ -371,8 +389,12 @@ model Journey {
   anyTrainAllowed      Boolean      @default(false) @map("any_train_allowed")
   useNextAvailableClass Boolean     @default(true) @map("use_next_available_class")
   considerAutoUpgradation Boolean   @default(true) @map("consider_auto_upgradation")
-  /// Preferences that map to IRCTC fields (berth, RAC/WL, coach, etc.).
+  racWaitlistPreference RacWaitlistPreference @default(ALLOW_WAITLIST) @map("rac_waitlist_preference")
+  /// Reserved for future booking preferences. Phase 4 preferences have their
+  /// own columns (berth on journey_passengers).
   preferences          Json         @default("{}")
+  /// Railway-rule versions in force when the journey was created (Phase 4).
+  ruleSnapshot         Json?        @map("rule_snapshot")
   /// Tatkal opening instant computed by the rules engine (UTC).
   tatkalOpensAt        DateTime?    @map("tatkal_opens_at") @db.Timestamptz(3)
   /// Rule versions used for the computation, for auditability.
@@ -382,6 +404,7 @@ model Journey {
   deletedAt            DateTime?    @map("deleted_at") @db.Timestamptz(3)
 
   user              User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  template          JourneyTemplate?         @relation(fields: [templateId], references: [id], onDelete: SetNull)
   passengers        JourneyPassenger[]
   trainPreferences  JourneyTrainPreference[]
   classPreferences  JourneyClassPreference[]
@@ -391,6 +414,7 @@ model Journey {
 
   @@index([userId, journeyDate])
   @@index([state, tatkalOpensAt])
+  @@index([templateId])
   @@map("journeys")
 }
 
@@ -399,6 +423,8 @@ model JourneyPassenger {
   journeyId   String   @map("journey_id") @db.Uuid
   passengerId String   @map("passenger_id") @db.Uuid
   position    Int
+  /// Berth for this journey; copied from the passenger when added.
+  berthPreference BerthPreference @default(NO_PREFERENCE) @map("berth_preference")
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -421,6 +447,7 @@ model JourneyTrainPreference {
   journey Journey @relation(fields: [journeyId], references: [id], onDelete: Cascade)
 
   @@unique([journeyId, priority])
+  @@unique([journeyId, trainNumber])
   @@map("journey_train_preferences")
 }
 
@@ -435,7 +462,85 @@ model JourneyClassPreference {
   journey Journey @relation(fields: [journeyId], references: [id], onDelete: Cascade)
 
   @@unique([journeyId, priority])
+  @@unique([journeyId, classCode])
   @@map("journey_class_preferences")
+}
+
+// ───────────────────────── Journey templates ─────────────────────────
+
+/// A reusable journey configuration (no date). Journeys created from it
+/// copy its configuration at creation time.
+model JourneyTemplate {
+  id                      String                @id @default(uuid()) @db.Uuid
+  userId                  String                @map("user_id") @db.Uuid
+  name                    String                @db.VarChar(60)
+  fromStationCode         String                @map("from_station_code") @db.VarChar(8)
+  toStationCode           String                @map("to_station_code") @db.VarChar(8)
+  boardingStationCode     String?               @map("boarding_station_code") @db.VarChar(8)
+  quota                   Quota                 @default(TATKAL)
+  anyTrainAllowed         Boolean               @default(false) @map("any_train_allowed")
+  useNextAvailableClass   Boolean               @default(true) @map("use_next_available_class")
+  considerAutoUpgradation Boolean               @default(true) @map("consider_auto_upgradation")
+  racWaitlistPreference   RacWaitlistPreference @default(ALLOW_WAITLIST) @map("rac_waitlist_preference")
+  createdAt               DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt               DateTime              @updatedAt @map("updated_at") @db.Timestamptz(3)
+  deletedAt               DateTime?             @map("deleted_at") @db.Timestamptz(3)
+
+  user       User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  passengers JourneyTemplatePassenger[]
+  trains     JourneyTemplateTrain[]
+  classes    JourneyTemplateClass[]
+  journeys   Journey[]
+
+  @@index([userId, deletedAt])
+  @@map("journey_templates")
+}
+
+model JourneyTemplatePassenger {
+  id              String          @id @default(uuid()) @db.Uuid
+  templateId      String          @map("template_id") @db.Uuid
+  passengerId     String          @map("passenger_id") @db.Uuid
+  position        Int
+  berthPreference BerthPreference @default(NO_PREFERENCE) @map("berth_preference")
+  createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  template  JourneyTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  passenger Passenger       @relation(fields: [passengerId], references: [id], onDelete: Restrict)
+
+  @@unique([templateId, passengerId])
+  @@map("journey_template_passengers")
+}
+
+model JourneyTemplateTrain {
+  id          String   @id @default(uuid()) @db.Uuid
+  templateId  String   @map("template_id") @db.Uuid
+  priority    Int
+  trainNumber String   @map("train_number") @db.VarChar(8)
+  trainName   String?  @map("train_name") @db.VarChar(120)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  template JourneyTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@unique([templateId, priority])
+  @@unique([templateId, trainNumber])
+  @@map("journey_template_trains")
+}
+
+model JourneyTemplateClass {
+  id         String   @id @default(uuid()) @db.Uuid
+  templateId String   @map("template_id") @db.Uuid
+  priority   Int
+  classCode  String   @map("class_code") @db.VarChar(4)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  template JourneyTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@unique([templateId, priority])
+  @@unique([templateId, classCode])
+  @@map("journey_template_classes")
 }
 
 // ───────────────────────── Scheduling & booking ─────────────────────────

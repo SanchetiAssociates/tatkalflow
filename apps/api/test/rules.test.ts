@@ -29,16 +29,29 @@ const EVIDENCE = {
 };
 
 describe("rules registry (source-controlled)", () => {
-  it("ships only values supplied by the product brief, all UNVERIFIED", () => {
+  // Phase 3 brief values (UNVERIFIED) plus the two rules the product owner
+  // verified against official IRCTC guidance in Phase 4 (VERIFIED, with evidence).
+  const BRIEF_KEYS = ["tatkal.ac.opening_time", "tatkal.ac_classes", "tatkal.advance_days", "tatkal.non_ac.opening_time", "tatkal.timezone"];
+  const VERIFIED_KEYS = ["tatkal.max_passengers_per_pnr", "tatkal.senior_citizen_concession_available"];
+
+  it("ships the product brief values as UNVERIFIED and only owner-verified values as VERIFIED", () => {
     const rules = registry();
-    expect(rules.map((r) => r.ruleKey).sort()).toEqual(
-      ["tatkal.ac.opening_time", "tatkal.ac_classes", "tatkal.advance_days", "tatkal.non_ac.opening_time", "tatkal.timezone"].sort(),
-    );
-    for (const r of rules) {
+    expect(rules.map((r) => r.ruleKey).sort()).toEqual([...BRIEF_KEYS, ...VERIFIED_KEYS].sort());
+    for (const r of rules.filter((x) => BRIEF_KEYS.includes(x.ruleKey))) {
       expect(r.verificationStatus).toBe("UNVERIFIED");
       expect(r.lastVerifiedAt).toBeNull();
       expect(r.sourceUrl).toBeNull();
     }
+    for (const r of rules.filter((x) => VERIFIED_KEYS.includes(x.ruleKey))) {
+      expect(r).toMatchObject({
+        verificationStatus: "VERIFIED",
+        sourceUrl: "https://contents.irctc.co.in/en/TatkalBooking.html",
+        lastVerifiedAt: "2026-09-25T00:00:00.000Z",
+        verifiedBy: "Sancheti Associates",
+      });
+    }
+    expect(entry("tatkal.max_passengers_per_pnr").value).toBe(4);
+    expect(entry("tatkal.senior_citizen_concession_available").value).toBe(false);
   });
 
   it("is applied by the seed and resolves with provenance, flagged as unverified", async () => {
@@ -56,9 +69,12 @@ describe("rules registry (source-controlled)", () => {
     expect(report.unchanged).toBe(registry().length);
   });
 
-  it("does not invent rules the brief didn't supply", async () => {
-    await expect(h.c.rules.get("tatkal.max_passengers_per_pnr")).rejects.toMatchObject({ code: "RULE_NOT_CONFIGURED", statusCode: 503 });
-    await expect(h.c.rules.get("tatkal.non_ac_classes")).rejects.toMatchObject({ code: "RULE_NOT_CONFIGURED" });
+  it("does not invent rules that weren't supplied or verified", async () => {
+    await expect(h.c.rules.get("tatkal.non_ac_classes")).rejects.toMatchObject({ code: "RULE_NOT_CONFIGURED", statusCode: 503 });
+    // Official sources conflict (15 vs 16), so the name-length rule stays out of the registry.
+    await expect(h.c.rules.get("passenger.name_max_length")).rejects.toMatchObject({ code: "RULE_NOT_CONFIGURED" });
+    const limit = await service(true).getForBooking("tatkal.max_passengers_per_pnr");
+    expect(limit).toMatchObject({ value: 4, isVerified: true, verifiedBy: "Sancheti Associates" });
   });
 });
 
@@ -107,7 +123,9 @@ describe("verification", () => {
     const gaps = await service(true).verificationGaps();
     const byKey = Object.fromEntries(gaps.map((g) => [g.ruleKey, g.state]));
     expect(byKey["tatkal.ac.opening_time"]).toBe("UNVERIFIED");
-    expect(byKey["tatkal.max_passengers_per_pnr"]).toBe("MISSING");
+    expect(byKey["tatkal.max_passengers_per_pnr"]).toBeUndefined(); // verified in the registry
+    expect(byKey["tatkal.senior_citizen_concession_available"]).toBeUndefined(); // verified in the registry
+    expect(byKey["passenger.name_max_length"]).toBe("MISSING");
     expect(byKey["tatkal.advance_days"]).toBeUndefined(); // verified above
   });
 });

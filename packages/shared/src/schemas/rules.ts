@@ -31,6 +31,10 @@ export const ruleValueSchemas = {
   "senior_citizen.min_age.male": z.number().int().min(0).max(120),
   "senior_citizen.min_age.female": z.number().int().min(0).max(120),
   "child.no_berth_max_age": z.number().int().min(0).max(18),
+  /** Longest passenger name (in characters) a booking accepts. */
+  "passenger.name_max_length": z.number().int().min(1).max(100),
+  /** Whether senior-citizen concession can be claimed on Tatkal bookings. */
+  "tatkal.senior_citizen_concession_available": z.boolean(),
 } as const;
 
 export type RuleKey = keyof typeof ruleValueSchemas;
@@ -53,6 +57,8 @@ export const CRITICAL_RULE_KEYS: readonly RuleKey[] = [
   "tatkal.ac_classes",
   "tatkal.non_ac_classes",
   "tatkal.max_passengers_per_pnr",
+  "passenger.name_max_length",
+  "tatkal.senior_citizen_concession_available",
 ];
 
 export const railwayRuleSchema = z

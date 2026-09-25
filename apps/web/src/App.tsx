@@ -17,6 +17,10 @@ const FirstJourney = lazy(() => import("./features/onboarding/FirstJourney"));
 const Home = lazy(() => import("./features/home/Home"));
 const Trips = lazy(() => import("./features/journeys/Trips"));
 const NewTrip = lazy(() => import("./features/journeys/NewTrip"));
+const TripDetail = lazy(() => import("./features/journeys/TripDetail"));
+const EditTrip = lazy(() => import("./features/journeys/EditTrip"));
+const TemplateDetail = lazy(() => import("./features/journeys/templates/TemplateDetail"));
+const TemplateEditorPage = lazy(() => import("./features/journeys/templates/TemplateEditorPage"));
 const Passengers = lazy(() => import("./features/passengers/Passengers"));
 const PassengerEditor = lazy(() => import("./features/passengers/PassengerEditor"));
 const Bookings = lazy(() => import("./features/bookings/Bookings"));
@@ -100,6 +104,11 @@ export const routes = [
           { path: "/", element: <Home /> },
           { path: "/trips", element: <Trips /> },
           { path: "/trips/new", element: <NewTrip /> },
+          { path: "/trips/:id", element: <TripDetail /> },
+          { path: "/trips/:id/edit", element: <EditTrip /> },
+          { path: "/trips/templates/new", element: <TemplateEditorPage /> },
+          { path: "/trips/templates/:id", element: <TemplateDetail /> },
+          { path: "/trips/templates/:id/edit", element: <TemplateEditorPage /> },
           { path: "/passengers", element: <Passengers /> },
           { path: "/passengers/new", element: <PassengerEditor /> },
           { path: "/passengers/:id/edit", element: <PassengerEditor /> },

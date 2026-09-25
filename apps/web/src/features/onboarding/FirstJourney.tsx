@@ -13,7 +13,7 @@ export default function FirstJourney() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Create your first journey</h1>
         <p className="mt-1 text-muted">
-          Where and when you want to travel. Train and class preferences, and Tatkal reminders, come next as the app grows. Booking always happens on IRCTC, where you complete sign-in, CAPTCHA, OTP and payment yourself.
+          Where and when you want to travel. You can add preferred trains, classes and other preferences later from Trips. Booking always happens on IRCTC, where you complete sign-in, CAPTCHA, OTP and payment yourself.
         </p>
       </div>
       <JourneyDraftForm submitLabel="Save journey" onDone={() => navigate("/", { replace: true })} onSaved={() => setSaved(true)} />
