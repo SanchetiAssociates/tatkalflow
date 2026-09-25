@@ -58,7 +58,9 @@ export function StationPicker({
 
   useEffect(() => setActive(0), [debounced]);
 
-  const notInstalled = Boolean(debounced) && search.data?.datasetVersion === null;
+  // Ignore placeholder data (the previous query's result) while a new query loads.
+  const fresh = !search.isPlaceholderData && !search.isFetching;
+  const notInstalled = Boolean(debounced) && fresh && search.data?.datasetVersion === null;
   const isFavourite = value ? Boolean(mine.data?.favourites.some((f) => f.code === value.code)) : false;
 
   function choose(s: StationDto) {
@@ -143,9 +145,10 @@ export function StationPicker({
           } else if (e.key === "ArrowUp") {
             e.preventDefault();
             setActive((a) => Math.max(a - 1, 0));
-          } else if (e.key === "Enter" && open && options[active]) {
+          } else if (e.key === "Enter") {
+            // Never submit the surrounding form from the search box.
             e.preventDefault();
-            choose(options[active]!);
+            if (open && options[active] && fresh) choose(options[active]!);
           } else if (e.key === "Escape") {
             setOpen(false);
           }
@@ -163,7 +166,7 @@ export function StationPicker({
       <div aria-live="polite" className="sr-only">
         {open && debounced && !search.isFetching ? `${options.length} stations found` : ""}
       </div>
-      {open && (options.length > 0 || notInstalled || (debounced && !search.isFetching)) && (
+      {open && (options.length > 0 || Boolean(debounced)) && (
         <ul
           id={listId}
           role="listbox"
@@ -171,7 +174,8 @@ export function StationPicker({
           className="absolute top-full z-20 mt-1 max-h-80 w-full overflow-auto rounded-2xl border border-border bg-surface p-1 shadow-card"
         >
           {notInstalled && <li className="p-3 text-sm text-muted">The station list isn't installed on this server yet.</li>}
-          {!notInstalled && debounced && options.length === 0 && <li className="p-3 text-sm text-muted">No stations match “{debounced}”.</li>}
+          {!notInstalled && debounced && fresh && options.length === 0 && <li className="p-3 text-sm text-muted">No stations match “{debounced}”.</li>}
+          {debounced && !fresh && options.length === 0 && <li className="p-3 text-sm text-muted">Searching…</li>}
           {options.map((s, i) => (
             <li
               key={`${s.group ?? "r"}-${s.code}`}

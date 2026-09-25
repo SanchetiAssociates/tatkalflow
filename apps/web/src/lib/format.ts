@@ -20,6 +20,12 @@ export function berthSummary(p: Pick<PassengerDto, "berthPreference">): string {
   return p.berthPreference === "NO_PREFERENCE" ? "Any berth" : `${BERTH_LABELS[p.berthPreference]} berth`;
 }
 
+/** "+919820012345" → "+91 98200 12345" */
+export function formatMobile(e164: string): string {
+  const m = /^\+91(\d{5})(\d{5})$/.exec(e164);
+  return m ? `+91 ${m[1]} ${m[2]}` : e164;
+}
+
 export function greeting(now = new Date()): string {
   const hour = Number(new Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", hour: "numeric", hourCycle: "h23" }).format(now));
   if (hour < 12) return "Good morning";

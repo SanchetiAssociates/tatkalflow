@@ -1,6 +1,6 @@
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { Navigate, useLocation } from "react-router";
-import { useAuth } from "../../lib/auth";
+import { clearPostSignInRedirect, peekPostSignInRedirect, useAuth } from "../../lib/auth";
 
 function Splash() {
   return (
@@ -21,10 +21,17 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
-/** Signed-out only (welcome/login). */
+/**
+ * Signed-out only (welcome/login). When sign-in completes on these screens,
+ * go where the sign-in flow asked (e.g. onboarding for new users), not "/".
+ */
 export function PublicOnly({ children }: { children: ReactNode }) {
   const { state } = useAuth();
+  const authenticated = state.status === "authenticated";
+  useEffect(() => {
+    if (authenticated) clearPostSignInRedirect();
+  }, [authenticated]);
   if (state.status === "unknown") return <Splash />;
-  if (state.status === "authenticated") return <Navigate to="/" replace />;
+  if (authenticated) return <Navigate to={peekPostSignInRedirect() ?? "/"} replace />;
   return <>{children}</>;
 }

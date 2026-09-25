@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { lazy, Suspense } from "react";
-import { createBrowserRouter, Outlet, RouterProvider } from "react-router";
+import { createBrowserRouter, Outlet, RouterProvider, ScrollRestoration } from "react-router";
 import { AppShell } from "./components/app/AppShell";
 import { PublicOnly, RequireAuth } from "./components/app/guards";
 import { ErrorState, Spinner } from "./components/ui";
@@ -43,7 +43,7 @@ function RouteError() {
 
 function Bare() {
   return (
-    <main id="main" className="pt-safe mx-auto flex min-h-dvh w-full max-w-md flex-col px-5 pb-8 pt-8">
+    <main id="main" className="pt-safe-8 mx-auto flex min-h-dvh w-full max-w-md flex-col px-5 pb-8">
       <Suspense fallback={<Spinner />}>
         <Outlet />
       </Suspense>
@@ -51,8 +51,19 @@ function Bare() {
   );
 }
 
+function Root() {
+  return (
+    <>
+      {/* New screens start at the top; back/forward restores position. */}
+      <ScrollRestoration />
+      <Outlet />
+    </>
+  );
+}
+
 export const routes = [
   {
+    element: <Root />,
     errorElement: <RouteError />,
     children: [
       {

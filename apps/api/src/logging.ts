@@ -25,7 +25,9 @@ export const REDACT_PATHS = [
   "*.body",
 ];
 
-export function loggerOptions(config: Pick<AppConfig, "LOG_LEVEL" | "NODE_ENV">): FastifyServerOptions["logger"] {
+type LoggerOptions = Exclude<FastifyServerOptions["logger"], boolean | undefined>;
+
+export function loggerOptions(config: Pick<AppConfig, "LOG_LEVEL" | "NODE_ENV">): LoggerOptions {
   return {
     level: config.NODE_ENV === "test" ? "silent" : config.LOG_LEVEL,
     redact: { paths: REDACT_PATHS, censor: "[REDACTED]" },

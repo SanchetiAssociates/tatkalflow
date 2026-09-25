@@ -1,8 +1,9 @@
 import { screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fakeSession, renderRoutes } from "./harness";
 
-const mocks = vi.hoisted(() => ({ session: null as unknown as ReturnType<typeof import("./harness").fakeSession>, api: vi.fn() }));
+const mocks = vi.hoisted(() => ({ session: null as unknown as ReturnType<typeof import("./harness").fakeSession>, api: vi.fn(), publicPost: vi.fn() }));
 
 vi.mock("../lib/api", async () => {
   const actual = await vi.importActual<typeof import("../lib/api")>("../lib/api");
@@ -12,6 +13,7 @@ vi.mock("../lib/api", async () => {
       return mocks.session;
     },
     api: (...args: unknown[]) => mocks.api(...args),
+    publicPost: (...args: unknown[]) => mocks.publicPost(...args),
   };
 });
 
@@ -23,6 +25,34 @@ beforeEach(() => {
     if (path === "/api/rules/active") return { enforcement: false, gaps: [{ ruleKey: "tatkal.ac.opening_time", state: "UNVERIFIED" }] };
     if (path === "/api/stations/mine") return { favourites: [], recents: [] };
     throw new Error(`unexpected ${path}`);
+  });
+});
+
+describe("sign-in flow", () => {
+  async function verifyAs(isNewUser: boolean) {
+    mocks.session = fakeSession({ status: "anonymous", user: null });
+    mocks.session.acceptSignIn.mockImplementation((t: { user: { id: string; mobile: string; fullName: string | null } }) =>
+      mocks.session.set({ status: "authenticated", user: t.user }),
+    );
+    mocks.publicPost.mockImplementation(async (path: string) => {
+      if (path === "/api/auth/otp/request") return { otpSessionId: "s1", expiresAt: new Date(Date.now() + 300_000).toISOString(), resendAvailableAt: new Date().toISOString() };
+      return { accessToken: "a", accessTokenExpiresAt: new Date(Date.now() + 900_000).toISOString(), user: { id: "u1", mobile: "+919876543210", fullName: null, isNewUser } };
+    });
+    await renderRoutes("/login");
+    await userEvent.type(await screen.findByLabelText("Mobile number"), "9876543210");
+    await userEvent.click(screen.getByRole("button", { name: "Send OTP" }));
+    await userEvent.type(await screen.findByLabelText("6-digit code"), "123456");
+    await userEvent.click(screen.getByRole("button", { name: "Verify" }));
+  }
+
+  it("takes a new user into onboarding (not straight to Home)", async () => {
+    await verifyAs(true);
+    expect(await screen.findByRole("heading", { name: "Your account is ready." })).toBeInTheDocument();
+  });
+
+  it("takes a returning user Home", async () => {
+    await verifyAs(false);
+    expect(await screen.findByRole("heading", { name: "Upcoming" })).toBeInTheDocument();
   });
 });
 

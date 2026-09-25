@@ -9,6 +9,19 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+// Where to go right after sign-in. Set by the OTP screen *before* the session
+// flips to authenticated, because that flip re-renders the signed-out guard.
+let postSignInRedirect: string | null = null;
+export function setPostSignInRedirect(path: string | null) {
+  postSignInRedirect = path;
+}
+export function peekPostSignInRedirect(): string | null {
+  return postSignInRedirect;
+}
+export function clearPostSignInRedirect() {
+  postSignInRedirect = null;
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const state = useSyncExternalStore(
     (cb) => session.subscribe(cb),

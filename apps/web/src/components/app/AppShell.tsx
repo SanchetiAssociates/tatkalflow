@@ -56,11 +56,11 @@ export function AppShell() {
 
       <div className="flex min-h-dvh flex-col">
         {!online && (
-          <div role="status" className="pt-safe sticky top-0 z-20 flex items-center justify-center gap-2 bg-warning-soft px-4 py-2 text-sm font-medium text-warning">
+          <div role="status" className="pt-safe-2 sticky top-0 z-20 flex items-center justify-center gap-2 bg-warning-soft px-4 pb-2 text-sm font-medium text-warning">
             <WifiOff aria-hidden className="size-4" /> You're offline. Saved screens still open; changes need a connection.
           </div>
         )}
-        <main id="main" className="pt-safe mx-auto w-full max-w-2xl flex-1 px-4 pb-28 pt-6 md:pb-10">
+        <main id="main" className="pt-safe-6 mx-auto w-full max-w-2xl flex-1 px-4 pb-28 md:pb-10">
           <Suspense fallback={<Spinner />}>
             <Outlet />
           </Suspense>

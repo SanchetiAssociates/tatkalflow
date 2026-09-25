@@ -4,6 +4,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router";
 import { Banner, Button, Field, Input } from "../../components/ui";
 import { ApiError, publicPost, session } from "../../lib/api";
+import { setPostSignInRedirect } from "../../lib/auth";
 
 type OtpState = RequestOtpResponse & { mobile: string; from?: string };
 
@@ -39,10 +40,15 @@ export default function VerifyOtp() {
     setBusy(true);
     try {
       const res = await publicPost<AuthTokensResponse>("/api/auth/otp/verify", { otpSessionId: otp!.otpSessionId, code: parsed.data });
+      const destination = res.user.isNewUser ? "/onboarding/ready" : (otp!.from ?? "/");
+      setPostSignInRedirect(destination);
       session.acceptSignIn({ accessToken: res.accessToken, accessTokenExpiresAt: res.accessTokenExpiresAt, user: res.user });
-      navigate(res.user.isNewUser ? "/onboarding/ready" : (otp!.from ?? "/"), { replace: true });
+      navigate(destination, { replace: true });
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Couldn't verify the code. Please try again.");
+      if (err instanceof ApiError) {
+        const left = typeof err.details.attemptsRemaining === "number" ? err.details.attemptsRemaining : null;
+        setError(left !== null ? `${err.message} ${left} attempt${left === 1 ? "" : "s"} left.` : err.message);
+      } else setError("Couldn't verify the code. Please try again.");
       setCode("");
     } finally {
       setBusy(false);

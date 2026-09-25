@@ -7,6 +7,7 @@ import { api, ApiError } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import { useIrctcAccount, useMe, useRemoveIrctcAccount, useSaveIrctcAccount, useUpdateMe } from "../../lib/queries";
 import { getTheme, setTheme, type ThemeChoice } from "../../lib/theme";
+import { formatMobile } from "../../lib/format";
 import { InstallCard } from "./InstallCard";
 
 function ProfileDetails() {
@@ -40,7 +41,7 @@ function ProfileDetails() {
     <Card as="section">
       <h2 className="mb-4 text-lg font-semibold">Your details</h2>
       <form onSubmit={submit} className="flex flex-col gap-4">
-        <p className="text-sm text-muted">Mobile: {me.data?.mobile}</p>
+        <p className="text-sm text-muted">Mobile: {formatMobile(me.data?.mobile ?? "")}</p>
         <Field label="Name" htmlFor="pf-name">
           <Input id="pf-name" autoComplete="name" value={fullName} onChange={(e) => setFullName(e.target.value)} />
         </Field>

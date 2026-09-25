@@ -86,6 +86,14 @@ describe("passenger schema", () => {
     expect(passengerInputSchema.safeParse({ ...ok, name: "<img src=x onerror=alert(1)>" }).success).toBe(false);
     expect(passengerInputSchema.safeParse({ ...ok, name: "R2D2" }).success).toBe(false);
   });
+  it("never turns a blank age into 0", () => {
+    for (const age of ["", "  ", null, undefined]) {
+      const r = passengerInputSchema.safeParse({ ...ok, age });
+      expect(r.success).toBe(false);
+      if (!r.success) expect(r.error.issues[0]?.message).toBe("Enter the age");
+    }
+    expect(passengerInputSchema.parse({ ...ok, age: "0" }).age).toBe(0); // an explicit 0 (infant) is allowed
+  });
   it("validates ages", () => {
     expect(passengerInputSchema.safeParse({ ...ok, age: -1 }).success).toBe(false);
     expect(passengerInputSchema.safeParse({ ...ok, age: 7.5 }).success).toBe(false);

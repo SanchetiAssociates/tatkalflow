@@ -81,6 +81,20 @@ describe("StationPicker", () => {
     expect(onChange).toHaveBeenCalledWith({ code: "DLI", name: "Delhi Junction", state: "Delhi" });
   });
 
+  it("Enter in the search box never submits the surrounding form", async () => {
+    mocks.api.mockImplementation(async (path: string) =>
+      path === "/api/stations/mine" ? { favourites: [], recents: [] } : new Promise(() => undefined), // search never resolves
+    );
+    const onSubmit = vi.fn((e: React.FormEvent) => e.preventDefault());
+    renderWithQuery(
+      <form onSubmit={onSubmit}>
+        <StationPicker label="To" value={null} onChange={() => undefined} />
+      </form>,
+    );
+    await userEvent.type(screen.getByRole("combobox", { name: "To" }), "ndls{Enter}");
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
   it("says clearly when the station list isn't installed", async () => {
     mocks.api.mockImplementation(async (path: string) =>
       path === "/api/stations/mine" ? { favourites: [], recents: [] } : { datasetVersion: null, results: [] },

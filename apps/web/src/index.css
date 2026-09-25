@@ -113,11 +113,20 @@ body {
     transition-duration: 0.01ms !important;
   }
 }
+/* Safe-area spacing. These are plain (unlayered) rules, so they would beat
+   Tailwind's padding utilities on the same side; each one therefore includes
+   the base spacing itself instead of being combined with pt-*/pb-*. */
 .pb-safe {
   padding-bottom: max(env(safe-area-inset-bottom), 0.5rem);
 }
-.pt-safe {
-  padding-top: env(safe-area-inset-top);
+.pt-safe-6 {
+  padding-top: calc(env(safe-area-inset-top) + 1.5rem);
+}
+.pt-safe-8 {
+  padding-top: calc(env(safe-area-inset-top) + 2rem);
+}
+.pt-safe-2 {
+  padding-top: calc(env(safe-area-inset-top) + 0.5rem);
 }
 @keyframes rise {
   from { opacity: 0; transform: translateY(6px); }

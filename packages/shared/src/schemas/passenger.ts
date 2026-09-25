@@ -46,7 +46,11 @@ const passengerName = z
  */
 const passengerFields = {
   name: passengerName,
-  age: z.coerce.number().int("Age must be a whole number").min(0, "Age can't be negative").max(125, "Check the age"),
+  // An empty form field must not coerce to 0: blank → "Enter the age".
+  age: z.preprocess(
+    (v) => (v === "" || v === null || (typeof v === "string" && v.trim() === "") ? undefined : v),
+    z.coerce.number({ error: "Enter the age" }).int("Age must be a whole number").min(0, "Age can't be negative").max(125, "Check the age"),
+  ),
   gender: z.enum(GENDERS, { message: "Select a gender" }),
   berthPreference: z.enum(BERTH_PREFERENCES),
   foodPreference: z.enum(FOOD_PREFERENCES),

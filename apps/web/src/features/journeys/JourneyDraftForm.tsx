@@ -10,7 +10,7 @@ import { StationPicker } from "../stations/StationPicker";
 
 type Errors = Partial<Record<"fromStationCode" | "toStationCode" | "journeyDate" | "passengerIds", string>>;
 
-export function JourneyDraftForm({ submitLabel = "Save journey", onDone }: { submitLabel?: string; onDone: () => void }) {
+export function JourneyDraftForm({ submitLabel = "Save journey", onDone, onSaved }: { submitLabel?: string; onDone: () => void; onSaved?: () => void }) {
   const create = useCreateJourney();
   const [from, setFrom] = useState<StationDto | null>(null);
   const [to, setTo] = useState<StationDto | null>(null);
@@ -35,6 +35,7 @@ export function JourneyDraftForm({ submitLabel = "Save journey", onDone }: { sub
     if (Object.keys(next).length || !parsed.success) return;
     try {
       setSaved(await create.mutateAsync(parsed.data));
+      onSaved?.();
     } catch (err) {
       if (err instanceof ApiError && err.fields.length) {
         setErrors(Object.fromEntries(err.fields.map((f) => [f.path, f.message])) as Errors);
