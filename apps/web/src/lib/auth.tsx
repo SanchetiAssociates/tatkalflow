@@ -1,6 +1,8 @@
-import { createContext, useContext, useEffect, useSyncExternalStore, type ReactNode } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { createContext, Fragment, useContext, useEffect, useSyncExternalStore, type ReactNode } from "react";
 import type { SessionState, SessionUser } from "@tatkalflow/shared/client";
 import { api, session } from "./api";
+import { bindQueryCacheToSession } from "./session-cache";
 
 interface AuthContextValue {
   state: SessionState;
@@ -23,6 +25,10 @@ export function clearPostSignInRedirect() {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient();
+  // One boundary for all cached data: a change of signed-in user clears it.
+  useEffect(() => bindQueryCacheToSession(queryClient, session), [queryClient]);
+
   const state = useSyncExternalStore(
     (cb) => session.subscribe(cb),
     () => session.getState(),
@@ -34,7 +40,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  return <AuthContext.Provider value={{ state, signOut: () => session.logout() }}>{children}</AuthContext.Provider>;
+  // Keyed by the signed-in identity: when it changes, every screen re-mounts and
+  // reads the already-purged cache, and no component keeps the previous user's
+  // data in local state. Token refreshes keep the same identity (no re-mount).
+  const identity = state.status === "authenticated" ? `user:${state.user?.id ?? ""}` : state.status;
+  return (
+    <AuthContext.Provider value={{ state, signOut: () => session.logout() }}>
+      <Fragment key={identity}>{children}</Fragment>
+    </AuthContext.Provider>
+  );
 }
 
 export function useAuth(): AuthContextValue {
