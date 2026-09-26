@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import type { PassengerDto } from "@tatkalflow/shared";
 import { createMemoryRouter, RouterProvider } from "react-router";
@@ -183,5 +183,107 @@ describe("bindQueryCacheToSession", () => {
     unbind();
     session.set({ status: "anonymous", user: null });
     expect(keys()).toContain('["passengers"]');
+  });
+});
+
+/**
+ * Identity invariants that must hold across a full A → B → A round trip and
+ * across token refreshes. The fake server's data changes between A's two
+ * sessions, so anything served from a leftover cache is visible on screen.
+ */
+describe("session identity invariants", () => {
+  /** Mutable server: each user's current passengers, with requests that can be held per user. */
+  function server(initial: Record<string, PassengerDto[]>) {
+    const data = { ...initial };
+    const pending = new Map<string, () => void>();
+    const holdNext = new Set<string>();
+    mocks.api.mockImplementation(async (path: string) => {
+      if (path !== "/api/passengers") throw new Error(`unexpected ${path}`);
+      const who = signedIn!;
+      if (holdNext.delete(who)) return new Promise((resolve) => pending.set(who, () => resolve(data[who])));
+      return data[who];
+    });
+    return {
+      data,
+      /** Hold this user's next response until release() is called. */
+      hold: (userId: string) => holdNext.add(userId),
+      release: async (userId: string) => act(async () => pending.get(userId)!()),
+      calls: () => passengerCalls(),
+    };
+  }
+
+  it("A → B → A: nothing crosses users, and A's data is fetched fresh on return", async () => {
+    const srv = server({ [USER_A.id]: [passenger("pa", "Alice Private")], [USER_B.id]: [passenger("pb", "Bina Own")] });
+    const { router } = await renderApp("/passengers");
+
+    // 1. A loads private data.
+    expect(await screen.findByText("Alice Private")).toBeInTheDocument();
+    const afterA = srv.calls();
+
+    // 2–4. Identity changes to B: A's data is gone at once, even while B's request is in flight.
+    srv.hold(USER_B.id);
+    signInAs(USER_B);
+    expect(screen.queryByText("Alice Private")).not.toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "Loading passengers" })).toBeInTheDocument();
+
+    // 5. B receives B's own data (a request made for B).
+    await srv.release(USER_B.id);
+    expect(await screen.findByText("Bina Own")).toBeInTheDocument();
+    expect(screen.queryByText("Alice Private")).not.toBeInTheDocument();
+    expect(srv.calls()).toBe(afterA + 1);
+
+    // A's data changes on the server while B is signed in.
+    srv.data[USER_A.id] = [passenger("pa", "Alice Updated")];
+
+    // 6. B signs out, then A signs back in (in-app, no reload).
+    signOut();
+    expect(await screen.findByText("Be Ready When Tatkal Opens.")).toBeInTheDocument();
+    srv.hold(USER_A.id);
+    signInAs(USER_A);
+    await act(() => router.navigate("/passengers"));
+
+    // While A's request is in flight: neither B's data nor A's old (stale) data is shown.
+    expect(screen.queryByText("Bina Own")).not.toBeInTheDocument();
+    expect(screen.queryByText("Alice Private")).not.toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "Loading passengers" })).toBeInTheDocument();
+
+    // 7–8. A's data is fetched fresh: the current server value, from a new request.
+    await srv.release(USER_A.id);
+    expect(await screen.findByText("Alice Updated")).toBeInTheDocument();
+    expect(screen.queryByText("Alice Private")).not.toBeInTheDocument();
+    expect(screen.queryByText("Bina Own")).not.toBeInTheDocument();
+    expect(srv.calls()).toBe(afterA + 2);
+  });
+
+  it("same-user token refresh: no remount, form input survives, cache kept, no refetch", async () => {
+    const srv = server({ [USER_A.id]: [passenger("pa", "Alice Private")] });
+    const { router } = await renderApp("/passengers");
+
+    // 1–2. A has loaded private data and starts filling in a form.
+    expect(await screen.findByText("Alice Private")).toBeInTheDocument();
+    await act(() => router.navigate("/passengers/new"));
+    const nameInput = await screen.findByLabelText("Full name");
+    fireEvent.change(nameInput, { target: { value: "Half typed name" } });
+    fireEvent.change(screen.getByLabelText("Age"), { target: { value: "33" } });
+    const callsBefore = srv.calls();
+
+    // 3. Token refreshed, identity still A. Both shapes the SessionManager produces:
+    //    the same user object (local refresh) and an equal copy (broadcast from another tab).
+    act(() => mocks.session.set({ status: "authenticated", user: mocks.session.getState().user }));
+    act(() => mocks.session.set({ status: "authenticated", user: { ...USER_A } }));
+
+    // 4–5. Not remounted: the very same input element, still holding the unsaved values.
+    expect(screen.getByLabelText("Full name")).toBe(nameInput);
+    expect(screen.getByLabelText("Full name")).toHaveValue("Half typed name");
+    expect(screen.getByLabelText("Age")).toHaveValue(33);
+
+    // 7. No request caused by the refresh.
+    expect(srv.calls()).toBe(callsBefore);
+
+    // 6. Private cache kept: going back shows A's list at once, without a new request.
+    await act(() => router.navigate("/passengers"));
+    expect(screen.getByText("Alice Private")).toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: "Loading passengers" })).not.toBeInTheDocument();
+    expect(srv.calls()).toBe(callsBefore);
   });
 });
